@@ -46,6 +46,10 @@ def submit_view(request):
 
 @api_view(['GET'])
 def leaderboard_view(request):
-    top_scores = Score.objects.order_by('-score')[:10]
-    serializer = ScoreSerializer(top_scores, many=True)
+    scores = Score.objects.order_by('-score')[:10]
+    serializer = ScoreSerializer(scores, many=True)
     return Response(serializer.data)
+
+@api_view(['GET'])
+def health_check(request):
+    return Response({"status": "ok"})
