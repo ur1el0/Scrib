@@ -5,15 +5,32 @@ import type { BoardItem, ScoreData } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8005/api';
 
+const getSavedState = () => {
+  try {
+    return JSON.parse(localStorage.getItem('scribbage_state') || '{}');
+  } catch {
+    return {};
+  }
+};
+
 function App() {
-  const [playerName, setPlayerName] = useState('Player1');
-  const [dice, setDice] = useState<string[]>([]);
-  const [placedTiles, setPlacedTiles] = useState<BoardItem[]>([]);
+  const savedState = getSavedState();
+  const [playerName, setPlayerName] = useState(savedState.playerName || 'Player1');
+  const [dice, setDice] = useState<string[]>(savedState.dice || []);
+  const [placedTiles, setPlacedTiles] = useState<BoardItem[]>(savedState.placedTiles || []);
   const [selectedTrayIndex, setSelectedTrayIndex] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState(180);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(savedState.timeLeft ?? 180);
+  const [isPlaying, setIsPlaying] = useState(savedState.isPlaying ?? false);
   const [leaderboard, setLeaderboard] = useState<ScoreData[]>([]);
   const [feedback, setFeedback] = useState<{valid: boolean, message: string, score?: number} | null>(null);
+
+  useEffect(() => {
+    if (isPlaying || placedTiles.length > 0 || dice.length > 0) {
+      localStorage.setItem('scribbage_state', JSON.stringify({
+        dice, placedTiles, timeLeft, isPlaying, playerName
+      }));
+    }
+  }, [dice, placedTiles, timeLeft, isPlaying, playerName]);
 
   useEffect(() => {
     fetchLeaderboard();
@@ -107,6 +124,7 @@ function App() {
           score: res.data.score
         });
         fetchLeaderboard();
+        localStorage.removeItem('scribbage_state');
       } else {
         setFeedback({valid: false, message: res.data.error});
       }
@@ -168,8 +186,17 @@ function App() {
                   <div 
                     key={`${r}-${c}`}
                     onClick={() => handleGridClick(r, c)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleGridClick(r, c);
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={tile ? `Grid cell ${r}, ${c} containing ${tile.letter}` : `Empty grid cell ${r}, ${c}`}
                     className={`aspect-square rounded border border-gray-200 flex items-center justify-center text-base sm:text-xl font-bold cursor-pointer transition-colors select-none touch-manipulation
-                      ${tile ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900' : 'bg-white hover:bg-indigo-50'}
+                      ${tile ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900 focus:ring-2 focus:ring-amber-500 outline-none' : 'bg-white hover:bg-indigo-50 focus:ring-2 focus:ring-indigo-300 outline-none'}
                     `}
                   >
                     {tile ? tile.letter : ''}
@@ -191,7 +218,16 @@ function App() {
               <div 
                 key={i}
                 onClick={() => handleTrayClick(i)}
-                className={`w-14 h-14 flex items-center justify-center rounded-lg border-2 text-2xl font-black cursor-pointer transition-all select-none touch-manipulation
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleTrayClick(i);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-label={`Tray tile ${letter}`}
+                className={`w-14 h-14 flex items-center justify-center rounded-lg border-2 text-2xl font-black cursor-pointer transition-all select-none touch-manipulation focus:outline-none focus:ring-4 focus:ring-indigo-300
                   ${selectedTrayIndex === i 
                     ? 'border-indigo-600 bg-indigo-100 text-indigo-800 scale-110 shadow-md' 
                     : 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-400 hover:shadow-sm'}
