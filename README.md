@@ -3,12 +3,12 @@
 Scribbage is a modern, full-stack, open-source web application for playing a competitive crossword dice game. Built for speed, responsiveness, and accessibility, this project demonstrates a production-grade architecture combining React (Vite) and Django REST Framework.
 
 ## Features
-- 🎲 **Interactive Gameplay:** Roll 13 letter dice and drag/click to place them on a 15x15 board.
-- ⏱️ **Real-Time Timer:** 3-minute rounds synchronized via client state.
-- 🏆 **Global Leaderboard:** Compete for the highest score.
-- 📱 **Fully Responsive:** Optimized for both desktop and mobile platforms with native touch support.
-- ♿ **Accessible:** Full keyboard navigation (Tab, Enter, Space) and ARIA support.
-- 💾 **Offline Resilience:** State is cached in `localStorage`—if you refresh, you don't lose your game!
+- **Interactive Gameplay:** Roll 13 letter dice and drag/click to place them on a 15x15 board.
+- **Real-Time Timer:** 3-minute rounds synchronized via client state.
+- **Global Leaderboard:** Compete for the highest score.
+- **Fully Responsive:** Optimized for both desktop and mobile platforms with native touch support.
+- **Accessible:** Full keyboard navigation (Tab, Enter, Space) and ARIA support.
+- **Offline Resilience:** State is cached in `localStorage`—if you refresh, you don't lose your game!
 
 ## Tech Stack
 - **Frontend:** React, Vite, TypeScript, Tailwind CSS, Lucide React
