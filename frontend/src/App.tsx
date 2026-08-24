@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
+import { Trophy } from 'lucide-react';
 import type { BoardItem, ScoreData } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8005/api';
@@ -218,7 +219,7 @@ function App() {
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <div className="bg-indigo-600 text-white p-4">
             <h2 className="text-xl font-black tracking-wide flex items-center gap-2">
-              🏆 Leaderboard
+              <Trophy className="w-6 h-6 text-amber-300" /> Leaderboard
             </h2>
           </div>
           <div className="p-4 flex flex-col gap-3">
