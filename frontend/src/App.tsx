@@ -87,13 +87,25 @@ function App() {
     if (existingIndex !== -1) {
       // Return to tray
       const tile = placedTiles[existingIndex];
-      setDice([...dice, tile.letter]);
+      setDice([...dice, tile.is_wildcard ? '_' : tile.letter]);
       setPlacedTiles(placedTiles.filter((_, i) => i !== existingIndex));
       setSelectedTrayIndex(null);
     } else if (selectedTrayIndex !== null) {
       // Place from tray
-      const letter = dice[selectedTrayIndex];
-      setPlacedTiles([...placedTiles, { row, col, letter }]);
+      let letter = dice[selectedTrayIndex];
+      let is_wildcard = false;
+
+      if (letter === '_') {
+        const input = prompt("Enter a letter (A-Z) for this Joker:");
+        if (!input || !/^[a-zA-Z]$/.test(input)) {
+           alert("You must enter a single letter from A to Z.");
+           return;
+        }
+        letter = input.toUpperCase();
+        is_wildcard = true;
+      }
+
+      setPlacedTiles([...placedTiles, { row, col, letter, is_wildcard }]);
       setDice(dice.filter((_, i) => i !== selectedTrayIndex));
       setSelectedTrayIndex(null);
     }
@@ -103,12 +115,11 @@ function App() {
     if (placedTiles.length === 0) return;
     setIsPlaying(false);
     
-    // The original full dice pool before any placements was what the backend expects?
-    // Wait, backend validate_submission expects the full 13 dice roll or just the ones placed?
-    // The backend says: "Validates that placed letters match the rolled dice pool."
-    // It subtracts placed letters from the submitted dice list.
-    // So we should send the FULL original roll, or the backend expects `dice` to represent the full pool.
-    const fullRoll = [...dice, ...placedTiles.map(t => t.letter)];
+    // Reconstruct the original 13 dice roll by converting wildcard board tiles back to '_'
+    const fullRoll = [...dice];
+    for (const t of placedTiles) {
+      fullRoll.push(t.is_wildcard ? '_' : t.letter);
+    }
     
     try {
       const res = await axios.post(`${API_URL}/game/submit/`, {
@@ -196,7 +207,12 @@ function App() {
                     role="button"
                     aria-label={tile ? `Grid cell ${r}, ${c} containing ${tile.letter}` : `Empty grid cell ${r}, ${c}`}
                     className={`aspect-square rounded border border-gray-200 flex items-center justify-center text-base sm:text-xl font-bold cursor-pointer transition-colors select-none touch-manipulation
-                      ${tile ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900 focus:ring-2 focus:ring-amber-500 outline-none' : 'bg-white hover:bg-indigo-50 focus:ring-2 focus:ring-indigo-300 outline-none'}
+                      ${tile 
+                        ? (tile.is_wildcard 
+                            ? 'bg-purple-100 border-purple-300 text-purple-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900'
+                            : 'bg-amber-100 border-amber-300 text-amber-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900'
+                          ) + ' focus:ring-2 focus:ring-amber-500 outline-none' 
+                        : 'bg-white hover:bg-indigo-50 focus:ring-2 focus:ring-indigo-300 outline-none'}
                     `}
                   >
                     {tile ? tile.letter : ''}
@@ -230,10 +246,12 @@ function App() {
                 className={`w-14 h-14 flex items-center justify-center rounded-lg border-2 text-2xl font-black cursor-pointer transition-all select-none touch-manipulation focus:outline-none focus:ring-4 focus:ring-indigo-300
                   ${selectedTrayIndex === i 
                     ? 'border-indigo-600 bg-indigo-100 text-indigo-800 scale-110 shadow-md' 
-                    : 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-400 hover:shadow-sm'}
+                    : (letter === '_' 
+                        ? 'border-purple-300 bg-purple-50 text-purple-900 hover:border-purple-400 hover:shadow-sm'
+                        : 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-400 hover:shadow-sm')}
                 `}
               >
-                {letter}
+                {letter === '_' ? '?' : letter}
               </div>
             ))}
           </div>
