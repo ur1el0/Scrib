@@ -229,7 +229,7 @@ export default function App() {
         <header className="bg-white border-b px-3 py-2 flex items-center justify-between shadow-sm z-10 shrink-0">
           <div>
             <h1 className="text-xl sm:text-2xl font-black text-indigo-700 tracking-tight leading-none">SCRIBBAGE</h1>
-            <div className="text-[9px] text-gray-500 font-bold uppercase mt-0.5">ni Roosc</div>
+            <div className="text-[15px] text-gray-500 font-bold uppercase mt-0.5">ni Roosc</div>
           </div>
           <div className="flex items-center gap-3">
             <div className={`text-xl sm:text-2xl font-mono font-black ${timeLeft < 30 && isPlaying ? 'text-red-500' : 'text-slate-800'}`}>
@@ -303,11 +303,14 @@ export default function App() {
         </main>
 
         {/* FOOTER: SOCIAL LINKS */}
-        <footer className="bg-white border-t p-3 flex justify-center items-center gap-6 shrink-0 z-10 text-sm font-bold">
-          <a href="#" className="text-gray-500 hover:text-gray-900 transition-colors" title="GitHub">GitHub</a>
-          <a href="#" className="text-gray-500 hover:text-blue-700 transition-colors" title="LinkedIn">LinkedIn</a>
-          <a href="#" className="text-gray-500 hover:text-blue-600 transition-colors" title="Facebook">Facebook</a>
-          <a href="#" className="text-gray-500 hover:text-pink-600 transition-colors" title="Instagram">Instagram</a>
+        <footer className="bg-white border-t p-2 flex flex-col justify-center items-center gap-1 shrink-0 z-10 text-sm font-bold">
+          <div className="text-xs text-gray-500 font-medium tracking-wide uppercase">Developed by Roosc</div>
+          <div className="flex gap-6 mt-1">
+            <a href="https://github.com/ur1el0" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-gray-900 transition-colors" title="GitHub">GitHub</a>
+            <a href="https://www.linkedin.com/in/roosc-za%C3%B1o-08568a357/" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-blue-700 transition-colors" title="LinkedIn">LinkedIn</a>
+            <a href="https://facebook.com/dumayac.nhel" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-blue-600 transition-colors" title="Facebook">Facebook</a>
+            <a href="https://instagram.com/fuschiapenk" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-pink-600 transition-colors" title="Instagram">Instagram</a>
+          </div>
         </footer>
 
         {/* LEADERBOARD MODAL */}
