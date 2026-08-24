@@ -168,7 +168,7 @@ function App() {
                   <div 
                     key={`${r}-${c}`}
                     onClick={() => handleGridClick(r, c)}
-                    className={`aspect-square rounded border border-gray-200 flex items-center justify-center text-base sm:text-xl font-bold cursor-pointer transition-colors select-none
+                    className={`aspect-square rounded border border-gray-200 flex items-center justify-center text-base sm:text-xl font-bold cursor-pointer transition-colors select-none touch-manipulation
                       ${tile ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900' : 'bg-white hover:bg-indigo-50'}
                     `}
                   >
@@ -191,7 +191,7 @@ function App() {
               <div 
                 key={i}
                 onClick={() => handleTrayClick(i)}
-                className={`w-14 h-14 flex items-center justify-center rounded-lg border-2 text-2xl font-black cursor-pointer transition-all select-none
+                className={`w-14 h-14 flex items-center justify-center rounded-lg border-2 text-2xl font-black cursor-pointer transition-all select-none touch-manipulation
                   ${selectedTrayIndex === i 
                     ? 'border-indigo-600 bg-indigo-100 text-indigo-800 scale-110 shadow-md' 
                     : 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-400 hover:shadow-sm'}
