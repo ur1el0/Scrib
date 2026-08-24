@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import axios from 'axios';
 import type { BoardItem, ScoreData } from './types';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8005/api';
 
 function App() {
   const [playerName, setPlayerName] = useState('Player1');
@@ -116,11 +116,11 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 text-gray-800 p-8 flex gap-8 justify-center">
+    <div className="min-h-screen bg-gray-100 text-gray-800 p-4 lg:p-8 flex flex-col lg:flex-row gap-8 justify-center">
       
       {/* LEFT COLUMN: GAME BOARD */}
       <div className="flex flex-col gap-6 max-w-3xl">
-        <header className="flex justify-between items-end">
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
           <div>
             <h1 className="text-4xl font-black text-indigo-700 tracking-tight mb-2">SCRIBBAGE</h1>
             <div className="flex gap-4 items-center">
@@ -141,7 +141,7 @@ function App() {
             </div>
           </div>
           
-          <div className="text-right">
+          <div className="text-left sm:text-right w-full sm:w-auto">
             <div className="text-sm text-gray-500 font-bold uppercase tracking-widest">Time Remaining</div>
             <div className={`text-5xl font-mono font-black ${timeLeft < 30 && isPlaying ? 'text-red-500' : 'text-slate-800'}`}>
               {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
@@ -158,8 +158,8 @@ function App() {
         )}
 
         {/* BOARD GRID */}
-        <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-200">
-          <div className="grid grid-cols-15 gap-1 bg-gray-100 p-2 rounded-lg" style={{gridTemplateColumns: 'repeat(15, minmax(0, 1fr))'}}>
+        <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-200 overflow-x-auto">
+          <div className="grid grid-cols-15 gap-1 bg-gray-100 p-2 rounded-lg min-w-[500px]" style={{gridTemplateColumns: 'repeat(15, minmax(0, 1fr))'}}>
             {Array.from({length: 15}).map((_, r) => (
               Array.from({length: 15}).map((_, c) => {
                 const tile = placedTiles.find(t => t.row === r && t.col === c);
@@ -167,7 +167,7 @@ function App() {
                   <div 
                     key={`${r}-${c}`}
                     onClick={() => handleGridClick(r, c)}
-                    className={`aspect-square rounded border border-gray-200 flex items-center justify-center text-xl font-bold cursor-pointer transition-colors select-none
+                    className={`aspect-square rounded border border-gray-200 flex items-center justify-center text-base sm:text-xl font-bold cursor-pointer transition-colors select-none
                       ${tile ? 'bg-amber-100 border-amber-300 text-amber-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900' : 'bg-white hover:bg-indigo-50'}
                     `}
                   >
@@ -214,7 +214,7 @@ function App() {
       </div>
 
       {/* RIGHT COLUMN: LEADERBOARD */}
-      <div className="w-80 flex flex-col gap-4">
+      <div className="w-full lg:w-80 flex flex-col gap-4">
         <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
           <div className="bg-indigo-600 text-white p-4">
             <h2 className="text-xl font-black tracking-wide flex items-center gap-2">
