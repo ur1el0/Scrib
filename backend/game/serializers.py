@@ -10,6 +10,7 @@ class BoardItemSerializer(serializers.Serializer):
     row = serializers.IntegerField()
     col = serializers.IntegerField()
     letter = serializers.CharField(max_length=1)
+    is_wildcard = serializers.BooleanField(default=False)
 
 class GameSubmitSerializer(serializers.Serializer):
     player_name = serializers.CharField(max_length=100)

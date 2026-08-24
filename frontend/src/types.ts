@@ -2,6 +2,7 @@ export interface BoardItem {
   row: number;
   col: number;
   letter: string;
+  is_wildcard?: boolean;
 }
 
 export interface ScoreData {
