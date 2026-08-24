@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Trophy } from 'lucide-react';
-import type { BoardItem, ScoreData } from './types';
+import { Trophy, X } from 'lucide-react';
+import { DndContext, useDraggable, useDroppable, TouchSensor, MouseSensor, useSensor, useSensors } from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import type { BoardItem, TrayItem, ScoreData } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8005/api';
 
@@ -13,16 +15,60 @@ const getSavedState = () => {
   }
 };
 
-function App() {
+// --- DRAG AND DROP COMPONENTS ---
+const DraggableTile = ({ id, letter, is_wildcard }: { id: string, letter: string, is_wildcard?: boolean }) => {
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id });
+  const style = transform ? {
+    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+    zIndex: 999,
+  } : undefined;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...listeners}
+      {...attributes}
+      className={`w-full h-full flex items-center justify-center rounded border shadow-sm text-xs sm:text-base font-black cursor-grab touch-none select-none
+        ${is_wildcard 
+          ? 'bg-purple-100 border-purple-300 text-purple-900'
+          : 'bg-amber-100 border-amber-300 text-amber-900'}
+      `}
+    >
+      {letter === '_' ? '?' : letter}
+    </div>
+  );
+};
+
+const DroppableGridCell = ({ id, tile }: { id: string, tile?: BoardItem }) => {
+  const { isOver, setNodeRef } = useDroppable({ id });
+  return (
+    <div 
+      ref={setNodeRef} 
+      className={`aspect-square w-full rounded border flex items-center justify-center p-0 sm:p-0.5
+        ${isOver ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-gray-200'}
+      `}
+    >
+      {tile && <DraggableTile id={tile.id} letter={tile.letter} is_wildcard={tile.is_wildcard} />}
+    </div>
+  );
+};
+
+export default function App() {
   const savedState = getSavedState();
   const [playerName, setPlayerName] = useState(savedState.playerName || 'Player1');
-  const [dice, setDice] = useState<string[]>(savedState.dice || []);
+  const [dice, setDice] = useState<TrayItem[]>(savedState.dice || []);
   const [placedTiles, setPlacedTiles] = useState<BoardItem[]>(savedState.placedTiles || []);
-  const [selectedTrayIndex, setSelectedTrayIndex] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState(savedState.timeLeft ?? 180);
   const [isPlaying, setIsPlaying] = useState(savedState.isPlaying ?? false);
   const [leaderboard, setLeaderboard] = useState<ScoreData[]>([]);
   const [feedback, setFeedback] = useState<{valid: boolean, message: string, score?: number} | null>(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+  );
 
   useEffect(() => {
     if (isPlaying || placedTiles.length > 0 || dice.length > 0) {
@@ -58,56 +104,68 @@ function App() {
   const startRound = async () => {
     try {
       const res = await axios.get(`${API_URL}/game/roll/`);
-      setDice(res.data.dice);
+      const trayDice = res.data.dice.map((letter: string) => ({
+        id: `dice-${crypto.randomUUID()}`,
+        letter
+      }));
+      setDice(trayDice);
       setPlacedTiles([]);
       setTimeLeft(180);
       setIsPlaying(true);
-      setSelectedTrayIndex(null);
       setFeedback(null);
     } catch (e) {
       console.error(e);
     }
   };
 
-  const handleTrayClick = (index: number) => {
-    if (!isPlaying) return;
-    if (selectedTrayIndex === index) {
-      setSelectedTrayIndex(null);
-    } else {
-      setSelectedTrayIndex(index);
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || !isPlaying) return;
+    
+    const tileId = active.id as string;
+    const targetId = over.id as string;
+
+    let sourceTile: TrayItem | BoardItem | undefined = dice.find(d => d.id === tileId);
+    let fromTray = true;
+    if (!sourceTile) {
+      sourceTile = placedTiles.find(t => t.id === tileId);
+      fromTray = false;
     }
-  };
+    if (!sourceTile) return;
 
-  const handleGridClick = (row: number, col: number) => {
-    if (!isPlaying) return;
-    
-    // Check if cell is occupied
-    const existingIndex = placedTiles.findIndex(t => t.row === row && t.col === col);
-    
-    if (existingIndex !== -1) {
-      // Return to tray
-      const tile = placedTiles[existingIndex];
-      setDice([...dice, tile.is_wildcard ? '_' : tile.letter]);
-      setPlacedTiles(placedTiles.filter((_, i) => i !== existingIndex));
-      setSelectedTrayIndex(null);
-    } else if (selectedTrayIndex !== null) {
-      // Place from tray
-      let letter = dice[selectedTrayIndex];
-      let is_wildcard = false;
-
-      if (letter === '_') {
-        const input = prompt("Enter a letter (A-Z) for this Joker:");
-        if (!input || !/^[a-zA-Z]$/.test(input)) {
-           alert("You must enter a single letter from A to Z.");
-           return;
-        }
-        letter = input.toUpperCase();
-        is_wildcard = true;
+    if (targetId === 'tray') {
+      if (!fromTray) {
+        const boardItem = sourceTile as BoardItem;
+        setPlacedTiles(prev => prev.filter(t => t.id !== tileId));
+        setDice(prev => [...prev, { id: tileId, letter: boardItem.is_wildcard ? '_' : boardItem.letter }]);
       }
+    } else if (targetId.startsWith('grid-')) {
+      const [, rStr, cStr] = targetId.split('-');
+      const r = parseInt(rStr);
+      const c = parseInt(cStr);
+      
+      const occupied = placedTiles.find(t => t.row === r && t.col === c);
+      if (occupied && occupied.id !== tileId) return;
 
-      setPlacedTiles([...placedTiles, { row, col, letter, is_wildcard }]);
-      setDice(dice.filter((_, i) => i !== selectedTrayIndex));
-      setSelectedTrayIndex(null);
+      let letter = sourceTile.letter;
+      let is_wildcard = (sourceTile as BoardItem).is_wildcard || false;
+      
+      if (fromTray && letter === '_') {
+          const input = prompt("Enter a letter (A-Z) for this Joker:");
+          if (!input || !/^[a-zA-Z]$/.test(input)) {
+             alert("You must enter a single letter from A to Z.");
+             return;
+          }
+          letter = input.toUpperCase();
+          is_wildcard = true;
+      }
+      
+      if (fromTray) {
+        setDice(prev => prev.filter(d => d.id !== tileId));
+        setPlacedTiles(prev => [...prev, { id: tileId, row: r, col: c, letter, is_wildcard }]);
+      } else {
+        setPlacedTiles(prev => prev.map(t => t.id === tileId ? { ...t, row: r, col: c } : t));
+      }
     }
   };
 
@@ -115,8 +173,7 @@ function App() {
     if (placedTiles.length === 0) return;
     setIsPlaying(false);
     
-    // Reconstruct the original 13 dice roll by converting wildcard board tiles back to '_'
-    const fullRoll = [...dice];
+    const fullRoll = [...dice.map(d => d.letter)];
     for (const t of placedTiles) {
       fullRoll.push(t.is_wildcard ? '_' : t.letter);
     }
@@ -145,159 +202,153 @@ function App() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100 text-gray-800 p-4 lg:p-8 flex flex-col lg:flex-row gap-8 justify-center">
-      
-      {/* LEFT COLUMN: GAME BOARD */}
-      <div className="flex flex-col gap-6 max-w-3xl">
-        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
-          <div>
-            <h1 className="text-4xl font-black text-indigo-700 tracking-tight mb-2">SCRIBBAGE</h1>
-            <div className="flex gap-4 items-center">
-              <input 
-                type="text" 
-                value={playerName}
-                onChange={e => setPlayerName(e.target.value)}
-                className="px-3 py-2 border rounded shadow-sm font-medium"
-                placeholder="Player Name"
-                disabled={isPlaying}
-              />
-              <button 
-                onClick={startRound}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded font-bold shadow-md transition-colors"
-              >
-                {isPlaying ? "Restart" : "Start Game"}
-              </button>
+  const TrayZone = () => {
+    const { setNodeRef } = useDroppable({ id: 'tray' });
+    return (
+      <div className="bg-white rounded-lg shadow border p-2 flex flex-col h-[160px] sm:h-[180px]">
+        <div className="flex justify-between items-center mb-1 px-1 shrink-0">
+          <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase">Tray</span>
+          <span className="text-[10px] sm:text-xs font-bold text-gray-500">{dice.length}/13</span>
+        </div>
+        <div ref={setNodeRef} className="grid grid-cols-7 gap-1 flex-grow items-start content-start">
+          {dice.map((tile) => (
+            <div key={tile.id} className="aspect-square w-full max-w-[45px] mx-auto">
+              <DraggableTile id={tile.id} letter={tile.letter} />
             </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <div className="h-screen w-full flex flex-col bg-gray-100 overflow-hidden font-sans text-gray-800">
+        
+        {/* HEADER */}
+        <header className="bg-white border-b px-3 py-2 flex items-center justify-between shadow-sm z-10 shrink-0">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black text-indigo-700 tracking-tight leading-none">SCRIBBAGE</h1>
+            <div className="text-[15px] text-gray-500 font-bold uppercase mt-0.5">ni Roosc</div>
           </div>
-          
-          <div className="text-left sm:text-right w-full sm:w-auto">
-            <div className="text-sm text-gray-500 font-bold uppercase tracking-widest">Time Remaining</div>
-            <div className={`text-5xl font-mono font-black ${timeLeft < 30 && isPlaying ? 'text-red-500' : 'text-slate-800'}`}>
+          <div className="flex items-center gap-3">
+            <div className={`text-xl sm:text-2xl font-mono font-black ${timeLeft < 30 && isPlaying ? 'text-red-500' : 'text-slate-800'}`}>
               {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
             </div>
+            <button 
+              onClick={() => setShowLeaderboard(true)}
+              className="bg-amber-100 text-amber-700 p-2 rounded-full shadow-sm hover:bg-amber-200"
+            >
+              <Trophy size={16} />
+            </button>
           </div>
         </header>
 
-        {/* FEEDBACK BANNER */}
-        {feedback && (
-          <div className={`p-4 rounded shadow-sm border-l-4 font-medium ${feedback.valid ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800'}`}>
-            {feedback.valid && <div className="text-2xl font-black mb-1">Score: {feedback.score}</div>}
-            <div>{feedback.message}</div>
-          </div>
-        )}
-
-        {/* BOARD GRID */}
-        <div className="bg-white p-4 rounded-xl shadow-lg border border-gray-200 overflow-x-auto">
-          <div className="grid grid-cols-15 gap-1 bg-gray-100 p-2 rounded-lg min-w-[500px]" style={{gridTemplateColumns: 'repeat(15, minmax(0, 1fr))'}}>
-            {Array.from({length: 15}).map((_, r) => (
-              Array.from({length: 15}).map((_, c) => {
-                const tile = placedTiles.find(t => t.row === r && t.col === c);
-                return (
-                  <div 
-                    key={`${r}-${c}`}
-                    onClick={() => handleGridClick(r, c)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleGridClick(r, c);
-                      }
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    aria-label={tile ? `Grid cell ${r}, ${c} containing ${tile.letter}` : `Empty grid cell ${r}, ${c}`}
-                    className={`aspect-square rounded border border-gray-200 flex items-center justify-center text-base sm:text-xl font-bold cursor-pointer transition-colors select-none touch-manipulation
-                      ${tile 
-                        ? (tile.is_wildcard 
-                            ? 'bg-purple-100 border-purple-300 text-purple-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900'
-                            : 'bg-amber-100 border-amber-300 text-amber-900 shadow-sm hover:bg-red-100 hover:border-red-300 hover:text-red-900'
-                          ) + ' focus:ring-2 focus:ring-amber-500 outline-none' 
-                        : 'bg-white hover:bg-indigo-50 focus:ring-2 focus:ring-indigo-300 outline-none'}
-                    `}
-                  >
-                    {tile ? tile.letter : ''}
-                  </div>
-                )
-              })
-            ))}
-          </div>
-        </div>
-
-        {/* DICE TRAY */}
-        <div className="bg-white p-6 rounded-xl shadow-lg border border-gray-200 flex flex-col gap-4">
-          <div className="text-sm text-gray-500 font-bold uppercase tracking-widest flex justify-between">
-            <span>Dice Tray</span>
-            <span>{dice.length} remaining</span>
-          </div>
-          <div className="flex flex-wrap gap-3 min-h-[4rem]">
-            {dice.map((letter, i) => (
-              <div 
-                key={i}
-                onClick={() => handleTrayClick(i)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleTrayClick(i);
-                  }
-                }}
-                tabIndex={0}
-                role="button"
-                aria-label={`Tray tile ${letter}`}
-                className={`w-14 h-14 flex items-center justify-center rounded-lg border-2 text-2xl font-black cursor-pointer transition-all select-none touch-manipulation focus:outline-none focus:ring-4 focus:ring-indigo-300
-                  ${selectedTrayIndex === i 
-                    ? 'border-indigo-600 bg-indigo-100 text-indigo-800 scale-110 shadow-md' 
-                    : (letter === '_' 
-                        ? 'border-purple-300 bg-purple-50 text-purple-900 hover:border-purple-400 hover:shadow-sm'
-                        : 'border-amber-200 bg-amber-50 text-amber-900 hover:border-amber-400 hover:shadow-sm')}
-                `}
-              >
-                {letter === '_' ? '?' : letter}
-              </div>
-            ))}
-          </div>
+        {/* MAIN GAME AREA */}
+        <main className="flex-1 flex flex-col items-center justify-start p-2 gap-2 overflow-y-auto w-full max-w-lg mx-auto">
           
-          <div className="flex justify-end pt-2 border-t mt-2">
+          {/* Controls */}
+          <div className="w-full flex gap-2 shrink-0">
+            <input 
+              type="text" 
+              value={playerName}
+              onChange={e => setPlayerName(e.target.value)}
+              className="flex-1 min-w-0 px-2 py-1.5 border rounded shadow-sm font-medium text-sm"
+              placeholder="Name"
+              disabled={isPlaying}
+            />
+            <button 
+              onClick={startRound}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap"
+            >
+              {isPlaying ? "Restart" : "Start"}
+            </button>
             <button 
               onClick={submitBoard}
               disabled={!isPlaying || placedTiles.length === 0}
-              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-8 py-3 rounded-lg font-bold shadow-md transition-colors text-lg"
+              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap"
             >
-              Submit Board
+              Submit
             </button>
           </div>
-        </div>
-      </div>
 
-      {/* RIGHT COLUMN: LEADERBOARD */}
-      <div className="w-full lg:w-80 flex flex-col gap-4">
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="bg-indigo-600 text-white p-4">
-            <h2 className="text-xl font-black tracking-wide flex items-center gap-2">
-              <Trophy className="w-6 h-6 text-amber-300" /> Leaderboard
-            </h2>
+          {/* Feedback */}
+          {feedback && (
+            <div className={`w-full p-2 rounded shadow-sm border-l-4 text-xs sm:text-sm font-bold ${feedback.valid ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800'} shrink-0`}>
+              {feedback.valid && <span className="mr-2">Score: {feedback.score}.</span>}
+              {feedback.message}
+            </div>
+          )}
+
+          {/* GRID */}
+          <div className="w-full aspect-square bg-gray-200 rounded-lg p-0.5 sm:p-1 shadow-inner shrink-0 mt-auto mb-auto">
+            <div className="w-full h-full grid grid-cols-15 gap-[1px]">
+              {Array.from({length: 15}).map((_, r) => (
+                Array.from({length: 15}).map((_, c) => (
+                  <DroppableGridCell 
+                    key={`${r}-${c}`} 
+                    id={`grid-${r}-${c}`} 
+                    tile={placedTiles.find(t => t.row === r && t.col === c)} 
+                  />
+                ))
+              ))}
+            </div>
           </div>
-          <div className="p-4 flex flex-col gap-3">
-            {leaderboard.length === 0 ? (
-              <div className="text-gray-500 text-center py-4">No scores yet. Be the first!</div>
-            ) : (
-              leaderboard.map((score, i) => (
-                <div key={score.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <div className={`font-black w-6 text-center ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-300'}`}>
-                      #{i + 1}
-                    </div>
-                    <div className="font-bold text-gray-700">{score.player_name}</div>
+
+          {/* TRAY */}
+          <div className="w-full shrink-0">
+            <TrayZone />
+          </div>
+          
+        </main>
+
+        {/* FOOTER: SOCIAL LINKS */}
+        <footer className="bg-white border-t p-2 flex flex-col justify-center items-center gap-1 shrink-0 z-10 text-sm font-bold">
+          <div className="text-xs text-gray-500 font-medium tracking-wide uppercase">Developed by Roosc</div>
+          <div className="flex gap-6 mt-1">
+            <a href="https://github.com/ur1el0" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-gray-900 transition-colors" title="GitHub">GitHub</a>
+            <a href="https://www.linkedin.com/in/roosc-za%C3%B1o-08568a357/" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-blue-700 transition-colors" title="LinkedIn">LinkedIn</a>
+            <a href="https://facebook.com/dumayac.nhel" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-blue-600 transition-colors" title="Facebook">Facebook</a>
+            <a href="https://instagram.com/fuschiapenk" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-pink-600 transition-colors" title="Instagram">Instagram</a>
+          </div>
+        </footer>
+
+        {/* LEADERBOARD MODAL */}
+        {showLeaderboard && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[80vh]">
+              <div className="bg-indigo-600 text-white p-4 flex justify-between items-center shrink-0">
+                <h2 className="text-lg font-black tracking-wide flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-amber-300" /> Leaderboard
+                </h2>
+                <button onClick={() => setShowLeaderboard(false)} className="text-white hover:text-gray-200">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto">
+                {leaderboard.length === 0 ? (
+                  <div className="text-gray-500 text-center py-8">No scores yet.</div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {leaderboard.map((score, i) => (
+                      <div key={score.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border">
+                        <div className="flex items-center gap-3">
+                          <div className={`font-black w-6 text-center ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-300'}`}>
+                            #{i + 1}
+                          </div>
+                          <div className="font-bold text-gray-700 text-sm sm:text-base">{score.player_name}</div>
+                        </div>
+                        <div className="font-black text-indigo-600">{score.score}</div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="font-black text-indigo-600 text-lg">{score.score}</div>
-                </div>
-              ))
-            )}
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
+
       </div>
-
-    </div>
-  )
+    </DndContext>
+  );
 }
-
-export default App
