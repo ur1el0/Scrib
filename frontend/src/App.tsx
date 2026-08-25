@@ -16,7 +16,7 @@ const getSavedState = () => {
 };
 
 // --- DRAG AND DROP COMPONENTS ---
-const DraggableTile = ({ id, letter, is_wildcard }: { id: string, letter: string, is_wildcard?: boolean }) => {
+const DraggableTile = ({ id, letter, is_wildcard, isSelected, onClick }: { id: string, letter: string, is_wildcard?: boolean, isSelected?: boolean, onClick?: (e: React.MouseEvent) => void }) => {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ 
     id,
     data: { letter, is_wildcard}
@@ -32,11 +32,13 @@ const DraggableTile = ({ id, letter, is_wildcard }: { id: string, letter: string
       style={style}
       {...listeners}
       {...attributes}
+      onClick={onClick}
       aria-label={is_wildcard ? 'Joker tile' : `${letter} tile`}
-      className={`w-full h-full flex items-center justify-center rounded border shadow-sm text-xs sm:text-base font-black cursor-grab touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500
+      className={`w-full h-full flex items-center justify-center rounded shadow-sm text-xs sm:text-base font-black cursor-grab touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500
         ${is_wildcard 
-          ? 'bg-purple-100 border-purple-300 text-purple-900'
-          : 'bg-amber-100 border-amber-300 text-amber-900'}
+          ? 'bg-purple-100 text-purple-900'
+          : 'bg-amber-100 text-amber-900'}
+        ${isSelected ? 'ring-4 ring-indigo-500 border-transparent' : (is_wildcard ? 'border border-purple-300' : 'border border-amber-300')}
       `}
     >
       {letter === '_' ? '?' : letter}
@@ -44,7 +46,7 @@ const DraggableTile = ({ id, letter, is_wildcard }: { id: string, letter: string
   );
 };
 
-const DroppableGridCell = ({ id, tile }: { id: string, tile?: BoardItem }) => {
+const DroppableGridCell = ({ id, tile, isSelectedTile, onTileClick, onCellClick }: { id: string, tile?: BoardItem, isSelectedTile?: boolean, onTileClick?: (id: string) => void, onCellClick?: (id: string) => void }) => {
   const { isOver, setNodeRef } = useDroppable({ id });
   
   let cellLabel = "Tray slot";
@@ -58,11 +60,12 @@ const DroppableGridCell = ({ id, tile }: { id: string, tile?: BoardItem }) => {
       ref={setNodeRef} 
       aria-label={cellLabel}
       role="region"
-      className={`aspect-square w-full rounded border flex items-center justify-center p-0 sm:p-0.5
+      onClick={() => onCellClick && onCellClick(id)}
+      className={`aspect-square w-full rounded border flex items-center justify-center p-0 sm:p-0.5 cursor-pointer
         ${isOver ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-gray-200'}
       `}
     >
-      {tile && <DraggableTile id={tile.id} letter={tile.letter} is_wildcard={tile.is_wildcard} />}
+      {tile && <DraggableTile id={tile.id} letter={tile.letter} is_wildcard={tile.is_wildcard} isSelected={isSelectedTile} onClick={(e) => { e.stopPropagation(); onTileClick && onTileClick(tile.id); }} />}
     </div>
   );
 };
@@ -77,10 +80,11 @@ export default function App() {
   const [leaderboard, setLeaderboard] = useState<ScoreData[]>([]);
   const [feedback, setFeedback] = useState<{valid: boolean, message: string, score?: number, breakdown?: {word: string, score: number}[]} | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor)
   );
 
@@ -166,13 +170,7 @@ export default function App() {
     }
   };
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || !isPlaying) return;
-    
-    const tileId = active.id as string;
-    const targetId = over.id as string;
-
+  const moveTile = (tileId: string, targetId: string) => {
     let sourceTile: TrayItem | BoardItem | undefined = dice.find(d => d.id === tileId);
     let fromTray = true;
     if (!sourceTile) {
@@ -215,6 +213,23 @@ export default function App() {
         setPlacedTiles(prev => prev.map(t => t.id === tileId ? { ...t, row: r, col: c } : t));
       }
     }
+    setSelectedTileId(null);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || !isPlaying) return;
+    moveTile(active.id as string, over.id as string);
+  };
+
+  const handleTileClick = (id: string) => {
+    if (!isPlaying) return;
+    setSelectedTileId(id === selectedTileId ? null : id);
+  };
+
+  const handleCellClick = (id: string) => {
+    if (!isPlaying || !selectedTileId) return;
+    moveTile(selectedTileId, id);
   };
 
   const submitBoard = async () => {
@@ -287,10 +302,10 @@ export default function App() {
           <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase">Tray</span>
           <span className="text-[10px] sm:text-xs font-bold text-gray-500">{dice.length}/13</span>
         </div>
-        <div ref={setNodeRef} className="grid grid-cols-7 gap-1 flex-grow items-start content-start">
+        <div ref={setNodeRef} onClick={() => selectedTileId && moveTile(selectedTileId, 'tray')} className="grid grid-cols-7 gap-1 flex-grow items-start content-start cursor-pointer">
           {dice.map((tile) => (
             <div key={tile.id} className="aspect-square w-full max-w-[45px] mx-auto">
-              <DraggableTile id={tile.id} letter={tile.letter} />
+              <DraggableTile id={tile.id} letter={tile.letter} isSelected={selectedTileId === tile.id} onClick={(e) => { e.stopPropagation(); handleTileClick(tile.id); }} />
             </div>
           ))}
         </div>
@@ -332,7 +347,6 @@ export default function App() {
               onChange={e => setPlayerName(e.target.value)}
               className="flex-1 min-w-0 px-2 py-1.5 border rounded shadow-sm font-medium text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="Name"
-              disabled={isPlaying}
             />
             <button 
               onClick={startRound}
@@ -385,6 +399,9 @@ export default function App() {
                     key={`${r}-${c}`} 
                     id={`grid-${r}-${c}`} 
                     tile={placedTiles.find(t => t.row === r && t.col === c)} 
+                    isSelectedTile={placedTiles.find(t => t.row === r && t.col === c)?.id === selectedTileId}
+                    onTileClick={handleTileClick}
+                    onCellClick={handleCellClick}
                   />
                 ))
               ))}
