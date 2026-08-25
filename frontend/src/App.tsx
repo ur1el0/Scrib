@@ -115,6 +115,11 @@ export default function App() {
       setFeedback(null);
     } catch (e) {
       console.error(e);
+      let errorMessage = "Failed to start round."
+      if (axios.isAxiosError(e) && !e.response) {
+        errorMessage = "Server is waking up. Please wait 30 seconds and try again!"
+      }
+      setFeedback({valid: false, message: errorMessage})
     }
   };
 
@@ -198,7 +203,23 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
-      setFeedback({valid: false, message: "Submission failed or network error."});
+      let errorMessage = "Submission failed or network error.";
+      
+      if (axios.isAxiosError(e)) {
+        if (e.response) {
+            // DRF Validation errors (400 Bad Request) usually come back as JSON objects mapping fields to arrays of errors
+            if (e.response.data && typeof e.response.data === 'object') {
+                 const firstKey = Object.keys(e.response.data)[0];
+                 const firstError = e.response.data[firstKey];
+                 errorMessage = `Error: ${Array.isArray(firstError) ? firstError[0] : firstError}`;
+            } else {
+                 errorMessage = `Server Error: ${e.response.statusText}`;
+            }
+        } else if (e.request) {
+            errorMessage = "Server took too long to respond (it might be waking up). Please try again!";
+        }
+      }
+      setFeedback({valid: false, message: errorMessage});
     }
   };
 
