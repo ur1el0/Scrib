@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Trophy, X } from 'lucide-react';
-import { DndContext, useDraggable, useDroppable, TouchSensor, MouseSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, useDraggable, useDroppable, TouchSensor, MouseSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import type { BoardItem, TrayItem, ScoreData } from './types';
 
@@ -17,7 +17,10 @@ const getSavedState = () => {
 
 // --- DRAG AND DROP COMPONENTS ---
 const DraggableTile = ({ id, letter, is_wildcard }: { id: string, letter: string, is_wildcard?: boolean }) => {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id });
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({ 
+    id,
+    data: { letter, is_wildcard}
+  });
   const style = transform ? {
     transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
     zIndex: 999,
@@ -29,7 +32,8 @@ const DraggableTile = ({ id, letter, is_wildcard }: { id: string, letter: string
       style={style}
       {...listeners}
       {...attributes}
-      className={`w-full h-full flex items-center justify-center rounded border shadow-sm text-xs sm:text-base font-black cursor-grab touch-none select-none
+      aria-label={is_wildcard ? 'Joker tile' : `${letter} tile`}
+      className={`w-full h-full flex items-center justify-center rounded border shadow-sm text-xs sm:text-base font-black cursor-grab touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500
         ${is_wildcard 
           ? 'bg-purple-100 border-purple-300 text-purple-900'
           : 'bg-amber-100 border-amber-300 text-amber-900'}
@@ -42,9 +46,18 @@ const DraggableTile = ({ id, letter, is_wildcard }: { id: string, letter: string
 
 const DroppableGridCell = ({ id, tile }: { id: string, tile?: BoardItem }) => {
   const { isOver, setNodeRef } = useDroppable({ id });
+  
+  let cellLabel = "Tray slot";
+  if (id.startsWith('grid-')) {
+     const [, r, c] = id.split('-');
+     cellLabel = `Row ${r}, Column ${c} ${tile ? '(Occupied)' : '(Empty)'}`;
+  }
+
   return (
     <div 
       ref={setNodeRef} 
+      aria-label={cellLabel}
+      role="region"
       className={`aspect-square w-full rounded border flex items-center justify-center p-0 sm:p-0.5
         ${isOver ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-gray-200'}
       `}
@@ -67,9 +80,40 @@ export default function App() {
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } })
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 5 } }),
+    useSensor(KeyboardSensor)
   );
 
+  const announcements = {
+    onDragStart({ active }: any) {
+      const isJoker = active.data.current?.is_wildcard
+      const letter = isJoker ? 'Joker' : active.data.current?.letter
+      return `Picked up ${letter} tile.`
+    },
+    onDragOver({ over }: any) {
+      if (over) {
+        const overName = over.id === 'tray'
+          ? 'the Tray'
+          : `Row ${over.id.split('-')[1]}, Column ${over.id.split('-')[2]}`
+        return `Tile moved over ${overName}.`
+      }
+      return `Tile is no longer over a valid drop area.`
+    },
+    onDragEnd({ active, over }: any) {
+      if (over) {
+        const isJoker = active.data.current?.is_wildcard;
+        const letter = isJoker ? 'Joker' :active.data.current?.letter;
+        const overName = over.id === 'tray'
+          ? 'the Tray'
+          : `Row ${over.id.split('-')[1]}, Column ${over.id.split('-')[2]}`
+        return `Dropped ${letter} tile onto ${overName}.`
+      }
+      return `Tile was dropped outside, returning to original position.`
+    },
+    onDragCancel() {
+      return `Drag cancelled.`
+    }
+  }
   useEffect(() => {
     if (isPlaying || placedTiles.length > 0 || dice.length > 0) {
       localStorage.setItem('scribbage_state', JSON.stringify({
@@ -115,6 +159,11 @@ export default function App() {
       setFeedback(null);
     } catch (e) {
       console.error(e);
+      let errorMessage = "Failed to start round."
+      if (axios.isAxiosError(e) && !e.response) {
+        errorMessage = "Server is waking up. Please wait 30 seconds and try again!"
+      }
+      setFeedback({valid: false, message: errorMessage})
     }
   };
 
@@ -198,8 +247,36 @@ export default function App() {
       }
     } catch (e) {
       console.error(e);
-      setFeedback({valid: false, message: "Submission failed or network error."});
+      let errorMessage = "Submission failed or network error.";
+      
+      if (axios.isAxiosError(e)) {
+        if (e.response) {
+            // DRF Validation errors (400 Bad Request) usually come back as JSON objects mapping fields to arrays of errors
+            if (e.response.data && typeof e.response.data === 'object') {
+                 const firstKey = Object.keys(e.response.data)[0];
+                 const firstError = e.response.data[firstKey];
+                 errorMessage = `Error: ${Array.isArray(firstError) ? firstError[0] : firstError}`;
+            } else {
+                 errorMessage = `Server Error: ${e.response.statusText}`;
+            }
+        } else if (e.request) {
+            errorMessage = "Server took too long to respond (it might be waking up). Please try again!";
+        }
+      }
+      setFeedback({valid: false, message: errorMessage});
     }
+  };
+
+  const recallAllTiles = () => {
+    if (!isPlaying || placedTiles.length === 0) return;
+    
+    const returnedTiles = placedTiles.map(t => ({
+      id: t.id,
+      letter: t.is_wildcard ? '_' : t.letter
+    }));
+    
+    setDice(prev => [...prev, ...returnedTiles]);
+    setPlacedTiles([]);
   };
 
   const TrayZone = () => {
@@ -222,7 +299,7 @@ export default function App() {
   };
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} onDragEnd={handleDragEnd} accessibility={{ announcements }}>
       <div className="h-screen w-full flex flex-col bg-gray-100 overflow-hidden font-sans text-gray-800">
         
         {/* HEADER */}
@@ -253,20 +330,27 @@ export default function App() {
               type="text" 
               value={playerName}
               onChange={e => setPlayerName(e.target.value)}
-              className="flex-1 min-w-0 px-2 py-1.5 border rounded shadow-sm font-medium text-sm"
+              className="flex-1 min-w-0 px-2 py-1.5 border rounded shadow-sm font-medium text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               placeholder="Name"
               disabled={isPlaying}
             />
             <button 
               onClick={startRound}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
               {isPlaying ? "Restart" : "Start"}
             </button>
             <button 
+              onClick={recallAllTiles}
+              disabled={!isPlaying || placedTiles.length === 0}
+              className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            >
+              Recall All
+            </button>
+            <button 
               onClick={submitBoard}
               disabled={!isPlaying || placedTiles.length === 0}
-              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap"
+              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
             >
               Submit
             </button>
