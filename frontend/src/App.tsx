@@ -75,7 +75,7 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState(savedState.timeLeft ?? 180);
   const [isPlaying, setIsPlaying] = useState(savedState.isPlaying ?? false);
   const [leaderboard, setLeaderboard] = useState<ScoreData[]>([]);
-  const [feedback, setFeedback] = useState<{valid: boolean, message: string, score?: number} | null>(null);
+  const [feedback, setFeedback] = useState<{valid: boolean, message: string, score?: number, breakdown?: {word: string, score: number}[]} | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
   const sensors = useSensors(
@@ -131,8 +131,7 @@ export default function App() {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
     } else if (isPlaying && timeLeft === 0) {
-      setIsPlaying(false);
-      setFeedback({valid: false, message: "Time's up! Please submit your board."});
+      submitBoard();
     }
   }, [isPlaying, timeLeft]);
 
@@ -237,8 +236,9 @@ export default function App() {
       if (res.data.valid) {
         setFeedback({
           valid: true, 
-          message: `Valid! Words: ${res.data.words.join(', ')}`,
-          score: res.data.score
+          message: `Valid!`,
+          score: res.data.score,
+          breakdown: res.data.breakdown
         });
         fetchLeaderboard();
         localStorage.removeItem('scribbage_state');
@@ -359,8 +359,20 @@ export default function App() {
           {/* Feedback */}
           {feedback && (
             <div className={`w-full p-2 rounded shadow-sm border-l-4 text-xs sm:text-sm font-bold ${feedback.valid ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800'} shrink-0`}>
-              {feedback.valid && <span className="mr-2">Score: {feedback.score}.</span>}
-              {feedback.message}
+              <div>
+                {feedback.valid && <span className="mr-2">Score: {feedback.score}.</span>}
+                {feedback.message}
+              </div>
+              {feedback.valid && feedback.breakdown && (
+                <ul className="mt-2 space-y-1 bg-white/50 p-2 rounded font-mono text-xs text-gray-700">
+                  {feedback.breakdown.map((item, idx) => (
+                    <li key={idx} className="flex justify-between border-b border-green-100 last:border-0 pb-0.5 last:pb-0">
+                      <span>{item.word}</span>
+                      <span>{item.score} pts</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

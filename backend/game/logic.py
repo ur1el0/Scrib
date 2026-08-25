@@ -113,26 +113,34 @@ def extract_word_positions(board):
     return words_positions
 
 def calculate_score(words_positions, board, used_tiles_count):
-    score = 0
+    total_score = 0
+    breakdown = []
+    
     for word_pos in words_positions:
+        word_str = "".join([board[(r, c)]['letter'].upper() for r, c in word_pos])
+        word_score = 0
         for r, c in word_pos:
             item = board[(r, c)]
             if not item.get('is_wildcard', False):
-                score += LETTER_VALUES.get(item['letter'].upper(), 0)
+                word_score += LETTER_VALUES.get(item['letter'].upper(), 0)
+        
+        total_score += word_score
+        breakdown.append({"word": word_str, "score": word_score})
             
     if used_tiles_count == 13:
-        score += 50
+        total_score += 50
+        breakdown.append({"word": "All 13 Tiles Bonus", "score": 50})
         
-    return score
+    return total_score, breakdown
 
 def validate_submission(dice, board_list):
     """
     dice: list of 13 strings
     board_list: list of dicts [{'row': r, 'col': c, 'letter': l, 'is_wildcard': bool}, ...]
-    Returns (is_valid, score, words, error_message)
+    Returns (is_valid, score, words, breakdown, error_message)
     """
     if not board_list:
-        return False, 0, [], "Board is empty."
+        return False, 0, [], [], "Board is empty."
         
     board = {(item['row'], item['col']): item for item in board_list}
     
@@ -148,18 +156,18 @@ def validate_submission(dice, board_list):
             dice_copy.remove(target_char)
         else:
             if is_wildcard:
-                return False, 0, [], "Invalid letter placed: no Joker (_) was available."
+                return False, 0, [], [], "Invalid letter placed: no Joker (_) was available."
             else:
-                return False, 0, [], f"Invalid letter placed: {letter} was not available."
+                return False, 0, [], [], f"Invalid letter placed: {letter} was not available."
             
     # 2. Verify grid connectivity
     if not is_contiguous(board):
-        return False, 0, [], "All words must be connected."
+        return False, 0, [], [], "All words must be connected."
         
     # 3. Extract words
     words_positions = extract_word_positions(board)
     if not words_positions:
-        return False, 0, [], "No valid words formed."
+        return False, 0, [], [], "No valid words formed."
         
     # Convert positions to strings for dictionary checking
     words = []
@@ -171,9 +179,9 @@ def validate_submission(dice, board_list):
     load_dictionary()
     invalid_words = [w for w in words if w not in VALID_WORDS]
     if invalid_words:
-        return False, 0, [], f"Invalid words found: {', '.join(invalid_words)}"
+        return False, 0, [], [], f"Invalid words found: {', '.join(invalid_words)}"
         
     # 5. Calculate score
-    score = calculate_score(words_positions, board, len(board_list))
+    score, breakdown = calculate_score(words_positions, board, len(board_list))
     
-    return True, score, words, None
+    return True, score, words, breakdown, None

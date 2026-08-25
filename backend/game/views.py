@@ -19,7 +19,7 @@ def submit_view(request):
         dice = serializer.validated_data['dice']
         board_list = serializer.validated_data['board']
         
-        is_valid, score, words, error = validate_submission(dice, board_list)
+        is_valid, score, words, breakdown, error = validate_submission(dice, board_list)
         
         if is_valid:
             # Save score
@@ -32,6 +32,7 @@ def submit_view(request):
                 'valid': True,
                 'score': score,
                 'words': words,
+                'breakdown': breakdown,
                 'error': None
             })
         else:
