@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Trophy, X } from 'lucide-react';
+import { Trophy, X, Sun, Moon } from 'lucide-react';
 import { DndContext, useDraggable, useDroppable, TouchSensor, MouseSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent } from '@dnd-kit/core';
 import type { BoardItem, TrayItem, ScoreData } from './types';
@@ -34,11 +34,12 @@ const DraggableTile = ({ id, letter, is_wildcard, isSelected, onClick }: { id: s
       {...attributes}
       onClick={onClick}
       aria-label={is_wildcard ? 'Joker tile' : `${letter} tile`}
-      className={`w-full h-full flex items-center justify-center rounded shadow-sm text-xs sm:text-base font-black cursor-grab touch-none select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500
+      className={`w-full h-full flex items-center justify-center rounded-lg text-xs sm:text-base font-black cursor-grab touch-none select-none focus:outline-none transition-transform duration-100
+        ${transform ? 'scale-110 z-50 shadow-md' : ''}
         ${is_wildcard 
-          ? 'bg-purple-100 text-purple-900'
-          : 'bg-amber-100 text-amber-900'}
-        ${isSelected ? 'ring-4 ring-indigo-500 border-transparent' : (is_wildcard ? 'border border-purple-300' : 'border border-amber-300')}
+          ? 'bg-purple-200 dark:bg-purple-800 text-purple-900 dark:text-purple-100'
+          : 'bg-amber-200 dark:bg-amber-700 text-amber-950 dark:text-amber-50'}
+        ${isSelected ? 'ring-4 ring-indigo-500 dark:ring-indigo-400 scale-105' : ''}
       `}
     >
       {letter === '_' ? '?' : letter}
@@ -61,8 +62,9 @@ const DroppableGridCell = ({ id, tile, isSelectedTile, onTileClick, onCellClick 
       aria-label={cellLabel}
       role="region"
       onClick={() => onCellClick && onCellClick(id)}
-      className={`aspect-square w-full rounded border flex items-center justify-center p-0 sm:p-0.5 cursor-pointer
-        ${isOver ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-gray-200'}
+      className={`aspect-square w-full flex items-center justify-center p-0.5 cursor-pointer transition-colors duration-100
+        border-r border-b border-gray-200 dark:border-slate-700
+        ${isOver ? 'bg-indigo-100 dark:bg-indigo-900/50' : 'bg-transparent hover:bg-gray-100 dark:hover:bg-slate-800'}
       `}
     >
       {tile && <DraggableTile id={tile.id} letter={tile.letter} is_wildcard={tile.is_wildcard} isSelected={isSelectedTile} onClick={(e) => { e.stopPropagation(); onTileClick && onTileClick(tile.id); }} />}
@@ -81,6 +83,7 @@ export default function App() {
   const [feedback, setFeedback] = useState<{valid: boolean, message: string, score?: number, breakdown?: {word: string, score: number}[]} | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(savedState.isDarkMode ?? false);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -119,12 +122,12 @@ export default function App() {
     }
   }
   useEffect(() => {
-    if (isPlaying || placedTiles.length > 0 || dice.length > 0) {
+    if (isPlaying || placedTiles.length > 0 || dice.length > 0 || isDarkMode !== undefined) {
       localStorage.setItem('scribbage_state', JSON.stringify({
-        dice, placedTiles, timeLeft, isPlaying, playerName
+        dice, placedTiles, timeLeft, isPlaying, playerName, isDarkMode
       }));
     }
-  }, [dice, placedTiles, timeLeft, isPlaying, playerName]);
+  }, [dice, placedTiles, timeLeft, isPlaying, playerName, isDarkMode]);
 
   useEffect(() => {
     fetchLeaderboard();
@@ -297,14 +300,14 @@ export default function App() {
   const TrayZone = () => {
     const { setNodeRef } = useDroppable({ id: 'tray' });
     return (
-      <div className="bg-white rounded-lg shadow border p-2 flex flex-col h-[160px] sm:h-[180px]">
+      <div className="bg-white dark:bg-slate-800 rounded-lg p-2 flex flex-col h-[160px] sm:h-[180px] transition-colors border border-gray-200 dark:border-slate-700 shadow-sm">
         <div className="flex justify-between items-center mb-1 px-1 shrink-0">
-          <span className="text-[10px] sm:text-xs font-bold text-gray-500 uppercase">Tray</span>
-          <span className="text-[10px] sm:text-xs font-bold text-gray-500">{dice.length}/13</span>
+          <span className="text-[10px] sm:text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Tray</span>
+          <span className="text-[10px] sm:text-xs font-bold text-gray-400 dark:text-slate-500">{dice.length}/13</span>
         </div>
         <div ref={setNodeRef} onClick={() => selectedTileId && moveTile(selectedTileId, 'tray')} className="grid grid-cols-7 gap-1 flex-grow items-start content-start cursor-pointer">
           {dice.map((tile) => (
-            <div key={tile.id} className="aspect-square w-full max-w-[45px] mx-auto">
+            <div key={tile.id} className="aspect-square w-full max-w-[45px] mx-auto p-[1px]">
               <DraggableTile id={tile.id} letter={tile.letter} isSelected={selectedTileId === tile.id} onClick={(e) => { e.stopPropagation(); handleTileClick(tile.id); }} />
             </div>
           ))}
@@ -315,23 +318,31 @@ export default function App() {
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd} accessibility={{ announcements }}>
-      <div className="h-screen w-full flex flex-col bg-gray-100 overflow-hidden font-sans text-gray-800">
+      <div className={isDarkMode ? 'dark' : ''}>
+        <div className="h-screen w-full flex flex-col bg-gray-50 dark:bg-slate-900 overflow-hidden font-sans text-gray-800 dark:text-slate-100 transition-colors duration-300">
         
         {/* HEADER */}
-        <header className="bg-white border-b px-3 py-2 flex items-center justify-between shadow-sm z-10 shrink-0">
+        <header className="bg-white dark:bg-slate-950 border-b border-gray-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between shrink-0 transition-colors">
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-indigo-700 tracking-tight leading-none">SCRIBBAGE</h1>
-            <div className="text-[15px] text-gray-500 font-bold uppercase mt-0.5">ni Roosc</div>
+            <h1 className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight leading-none">SCRIBBAGE</h1>
+            <div className="text-[13px] text-gray-400 dark:text-slate-500 font-bold uppercase mt-0.5 tracking-widest">ni Roosc</div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className={`text-xl sm:text-2xl font-mono font-black ${timeLeft < 30 && isPlaying ? 'text-red-500' : 'text-slate-800'}`}>
+          <div className="flex items-center gap-4">
+            <div className={`text-xl sm:text-2xl font-mono font-black ${timeLeft < 30 && isPlaying ? 'text-red-500' : 'text-gray-800 dark:text-slate-200'}`}>
               {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
             </div>
             <button 
-              onClick={() => setShowLeaderboard(true)}
-              className="bg-amber-100 text-amber-700 p-2 rounded-full shadow-sm hover:bg-amber-200"
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="text-gray-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors"
+              aria-label="Toggle Dark Mode"
             >
-              <Trophy size={16} />
+              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+            <button 
+              onClick={() => setShowLeaderboard(true)}
+              className="text-gray-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors"
+            >
+              <Trophy size={20} />
             </button>
           </div>
         </header>
@@ -345,26 +356,26 @@ export default function App() {
               type="text" 
               value={playerName}
               onChange={e => setPlayerName(e.target.value)}
-              className="flex-1 min-w-0 px-2 py-1.5 border rounded shadow-sm font-medium text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="flex-1 min-w-0 px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg font-medium text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors"
               placeholder="Name"
             />
             <button 
               onClick={startRound}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap focus:outline-none transition-colors"
             >
               {isPlaying ? "Restart" : "Start"}
             </button>
             <button 
               onClick={recallAllTiles}
               disabled={!isPlaying || placedTiles.length === 0}
-              className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+              className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-200 dark:disabled:bg-slate-800 disabled:text-gray-400 dark:disabled:text-slate-600 text-white px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap focus:outline-none transition-colors"
             >
               Recall All
             </button>
             <button 
               onClick={submitBoard}
               disabled={!isPlaying || placedTiles.length === 0}
-              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-3 py-1.5 rounded font-bold shadow-sm text-sm whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-200 dark:disabled:bg-slate-800 disabled:text-gray-400 dark:disabled:text-slate-600 text-white px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap focus:outline-none transition-colors"
             >
               Submit
             </button>
@@ -372,15 +383,15 @@ export default function App() {
 
           {/* Feedback */}
           {feedback && (
-            <div className={`w-full p-2 rounded shadow-sm border-l-4 text-xs sm:text-sm font-bold ${feedback.valid ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800'} shrink-0`}>
-              <div>
-                {feedback.valid && <span className="mr-2">Score: {feedback.score}.</span>}
+            <div className={`w-full p-3 rounded-lg border text-sm font-medium transition-colors ${feedback.valid ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'} shrink-0`}>
+              <div className="flex items-center">
+                {feedback.valid && <span className="mr-2 font-bold text-base">Score: {feedback.score}.</span>}
                 {feedback.message}
               </div>
               {feedback.valid && feedback.breakdown && (
-                <ul className="mt-2 space-y-1 bg-white/50 p-2 rounded font-mono text-xs text-gray-700">
+                <ul className="mt-2 space-y-1 bg-white/50 dark:bg-black/20 p-2 rounded font-mono text-xs text-gray-700 dark:text-gray-300">
                   {feedback.breakdown.map((item, idx) => (
-                    <li key={idx} className="flex justify-between border-b border-green-100 last:border-0 pb-0.5 last:pb-0">
+                    <li key={idx} className="flex justify-between border-b border-green-100 dark:border-green-800/50 last:border-0 pb-0.5 last:pb-0">
                       <span>{item.word}</span>
                       <span>{item.score} pts</span>
                     </li>
@@ -391,8 +402,8 @@ export default function App() {
           )}
 
           {/* GRID */}
-          <div className="w-full aspect-square bg-gray-200 rounded-lg p-0.5 sm:p-1 shadow-inner shrink-0 mt-auto mb-auto">
-            <div className="w-full h-full grid grid-cols-15 gap-[1px]">
+          <div className="w-full aspect-square bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 shrink-0 mt-auto mb-auto overflow-hidden">
+            <div className="w-full h-full grid grid-cols-15 border-l border-t border-gray-200 dark:border-slate-700">
               {Array.from({length: 15}).map((_, r) => (
                 Array.from({length: 15}).map((_, c) => (
                   <DroppableGridCell 
@@ -416,15 +427,16 @@ export default function App() {
         </main>
 
         {/* FOOTER: SOCIAL LINKS */}
-        <footer className="bg-white border-t p-2 flex flex-col justify-center items-center gap-1 shrink-0 z-10 text-sm font-bold">
-          <div className="text-xs text-gray-500 font-medium tracking-wide uppercase">Developed by Roosc</div>
+        <footer className="bg-white dark:bg-slate-950 border-t border-gray-200 dark:border-slate-800 p-3 flex flex-col justify-center items-center gap-1 shrink-0 z-10 text-sm font-bold transition-colors">
+          <div className="text-xs text-gray-400 dark:text-slate-500 font-medium tracking-widest uppercase">Developed by Roosc</div>
           <div className="flex gap-6 mt-1">
-            <a href="https://github.com/ur1el0" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-gray-900 transition-colors" title="GitHub">GitHub</a>
-            <a href="https://www.linkedin.com/in/roosc-za%C3%B1o-08568a357/" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-blue-700 transition-colors" title="LinkedIn">LinkedIn</a>
-            <a href="https://facebook.com/dumayac.nhel" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-blue-600 transition-colors" title="Facebook">Facebook</a>
-            <a href="https://instagram.com/fuschiapenk" target="_blank" rel="noopener noreferrer" className="text-gray-500 hover:text-pink-600 transition-colors" title="Instagram">Instagram</a>
+            <a href="https://github.com/ur1el0" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-900 dark:hover:text-slate-100 transition-colors" title="GitHub">GitHub</a>
+            <a href="https://www.linkedin.com/in/roosc-za%C3%B1o-08568a357/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="LinkedIn">LinkedIn</a>
+            <a href="https://facebook.com/dumayac.nhel" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="Facebook">Facebook</a>
+            <a href="https://instagram.com/fuschiapenk" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-pink-600 dark:hover:text-pink-400 transition-colors" title="Instagram">Instagram</a>
           </div>
         </footer>
+        </div>
 
         {/* LEADERBOARD MODAL */}
         {showLeaderboard && (
