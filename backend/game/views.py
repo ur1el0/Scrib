@@ -1,55 +1,34 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Score
-from .serializers import ScoreSerializer, GameSubmitSerializer
-from .logic import roll_dice, validate_submission
-
-@api_view(['GET'])
-def roll_view(request):
-    seed = request.query_params.get('seed', None)
-    dice = roll_dice(seed)
-    return Response({'dice': dice})
+from .models import Room, Player
+from .serializers import RoomSerializer
 
 @api_view(['POST'])
-def submit_view(request):
-    serializer = GameSubmitSerializer(data=request.data)
-    if serializer.is_valid():
-        player_name = serializer.validated_data['player_name']
-        dice = serializer.validated_data['dice']
-        board_list = serializer.validated_data['board']
-        
-        is_valid, score, words, breakdown, error = validate_submission(dice, board_list)
-        
-        if is_valid:
-            # Save score
-            score_obj = Score.objects.create(
-                player_name=player_name,
-                score=score,
-                words=words
-            )
-            return Response({
-                'valid': True,
-                'score': score,
-                'words': words,
-                'breakdown': breakdown,
-                'error': None
-            })
-        else:
-            return Response({
-                'valid': False,
-                'score': 0,
-                'words': [],
-                'error': error
-            })
-            
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+def create_room(request):
+    room = Room.objects.create()
+    return Response(RoomSerializer(room).data)
 
-@api_view(['GET'])
-def leaderboard_view(request):
-    scores = Score.objects.order_by('-score')[:10]
-    serializer = ScoreSerializer(scores, many=True)
-    return Response(serializer.data)
+@api_view(['POST'])
+def join_room(request):
+    code = request.data.get('code', '').upper()
+    name = request.data.get('name', '').strip()
+    if not code or not name:
+        return Response({'error': 'Missing code or name'}, status=400)
+        
+    try:
+        room = Room.objects.get(code=code)
+    except Room.DoesNotExist:
+        return Response({'error': 'Room not found'}, status=404)
+        
+    player, created = Player.objects.get_or_create(room=room, name=name)
+    
+    # First player to join is game master
+    if created and room.players.count() == 1:
+        player.is_game_master = True
+        player.save()
+        
+    return Response({'room': room.code, 'name': player.name, 'is_gm': player.is_game_master})
 
 @api_view(['GET'])
 def health_check(request):
