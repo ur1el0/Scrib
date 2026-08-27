@@ -1,479 +1,208 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Trophy, X, Sun, Moon } from 'lucide-react';
-import { DndContext, useDraggable, useDroppable, TouchSensor, MouseSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
-import type { DragEndEvent } from '@dnd-kit/core';
-import type { BoardItem, TrayItem, ScoreData } from './types';
+import { useState } from 'react'
+import useWebSocket from 'react-use-websocket'
+import axios from 'axios'
+import './App.css'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8005/api';
+const WS_URL = 'ws://127.0.0.1:8000/ws/game/'
+const API_URL = 'http://127.0.0.1:8000/api/'
 
-const getSavedState = () => {
-  try {
-    return JSON.parse(localStorage.getItem('scribbage_state') || '{}');
-  } catch {
-    return {};
-  }
-};
-
-// --- DRAG AND DROP COMPONENTS ---
-const DraggableTile = ({ id, letter, is_wildcard, isSelected, onClick }: { id: string, letter: string, is_wildcard?: boolean, isSelected?: boolean, onClick?: (e: React.MouseEvent) => void }) => {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ 
-    id,
-    data: { letter, is_wildcard}
-  });
-  const style = transform ? {
-    transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-    zIndex: 999,
-  } : undefined;
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      onClick={onClick}
-      aria-label={is_wildcard ? 'Joker tile' : `${letter} tile`}
-      className={`w-full h-full flex items-center justify-center rounded-lg text-xs sm:text-base font-black cursor-grab touch-none select-none focus:outline-none transition-transform duration-100
-        ${transform ? 'scale-110 z-50 shadow-md' : ''}
-        ${is_wildcard 
-          ? 'bg-purple-200 dark:bg-purple-800 text-purple-900 dark:text-purple-100'
-          : 'bg-amber-200 dark:bg-amber-700 text-amber-950 dark:text-amber-50'}
-        ${isSelected ? 'ring-4 ring-indigo-500 dark:ring-indigo-400 scale-105' : ''}
-      `}
-    >
-      {letter === '_' ? '?' : letter}
-    </div>
-  );
-};
-
-const DroppableGridCell = ({ id, tile, isSelectedTile, onTileClick, onCellClick }: { id: string, tile?: BoardItem, isSelectedTile?: boolean, onTileClick?: (id: string) => void, onCellClick?: (id: string) => void }) => {
-  const { isOver, setNodeRef } = useDroppable({ id });
+function App() {
+  const [view, setView] = useState<'LOBBY' | 'WAITING' | 'PLAYING' | 'FINISHED'>('LOBBY')
+  const [roomCode, setRoomCode] = useState('')
+  const [name, setName] = useState('')
+  const [isGm, setIsGm] = useState(false)
   
-  let cellLabel = "Tray slot";
-  if (id.startsWith('grid-')) {
-     const [, r, c] = id.split('-');
-     cellLabel = `Row ${r}, Column ${c} ${tile ? '(Occupied)' : '(Empty)'}`;
-  }
+  // Game State
+  const [board, setBoard] = useState<string[][]>([])
+  const [timeLeft, setTimeLeft] = useState(180)
+  const [currentWord, setCurrentWord] = useState('')
+  const [myScore, setMyScore] = useState(0)
+  const [myWords, setMyWords] = useState<{word: string, points: number}[]>([])
+  
+  // Players
+  const [players, setPlayers] = useState<Record<string, number>>({})
 
-  return (
-    <div 
-      ref={setNodeRef} 
-      aria-label={cellLabel}
-      role="region"
-      onClick={() => onCellClick && onCellClick(id)}
-      className={`aspect-square w-full flex items-center justify-center p-0.5 cursor-pointer transition-colors duration-100
-        border-r border-b border-gray-200 dark:border-slate-700
-        ${isOver ? 'bg-indigo-100 dark:bg-indigo-900/50' : 'bg-transparent hover:bg-gray-100 dark:hover:bg-slate-800'}
-      `}
-    >
-      {tile && <DraggableTile id={tile.id} letter={tile.letter} is_wildcard={tile.is_wildcard} isSelected={isSelectedTile} onClick={(e) => { e.stopPropagation(); onTileClick && onTileClick(tile.id); }} />}
-    </div>
-  );
-};
-
-export default function App() {
-  const savedState = getSavedState();
-  const [playerName, setPlayerName] = useState(savedState.playerName || 'Player1');
-  const [dice, setDice] = useState<TrayItem[]>(savedState.dice || []);
-  const [placedTiles, setPlacedTiles] = useState<BoardItem[]>(savedState.placedTiles || []);
-  const [timeLeft, setTimeLeft] = useState(savedState.timeLeft ?? 180);
-  const [isPlaying, setIsPlaying] = useState(savedState.isPlaying ?? false);
-  const [leaderboard, setLeaderboard] = useState<ScoreData[]>([]);
-  const [feedback, setFeedback] = useState<{valid: boolean, message: string, score?: number, breakdown?: {word: string, score: number}[]} | null>(null);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
-  const [isDarkMode, setIsDarkMode] = useState(savedState.isDarkMode ?? false);
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(TouchSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor)
-  );
-
-  const announcements = {
-    onDragStart({ active }: any) {
-      const isJoker = active.data.current?.is_wildcard
-      const letter = isJoker ? 'Joker' : active.data.current?.letter
-      return `Picked up ${letter} tile.`
-    },
-    onDragOver({ over }: any) {
-      if (over) {
-        const overName = over.id === 'tray'
-          ? 'the Tray'
-          : `Row ${over.id.split('-')[1]}, Column ${over.id.split('-')[2]}`
-        return `Tile moved over ${overName}.`
-      }
-      return `Tile is no longer over a valid drop area.`
-    },
-    onDragEnd({ active, over }: any) {
-      if (over) {
-        const isJoker = active.data.current?.is_wildcard;
-        const letter = isJoker ? 'Joker' :active.data.current?.letter;
-        const overName = over.id === 'tray'
-          ? 'the Tray'
-          : `Row ${over.id.split('-')[1]}, Column ${over.id.split('-')[2]}`
-        return `Dropped ${letter} tile onto ${overName}.`
-      }
-      return `Tile was dropped outside, returning to original position.`
-    },
-    onDragCancel() {
-      return `Drag cancelled.`
-    }
-  }
-  useEffect(() => {
-    if (isPlaying || placedTiles.length > 0 || dice.length > 0 || isDarkMode !== undefined) {
-      localStorage.setItem('scribbage_state', JSON.stringify({
-        dice, placedTiles, timeLeft, isPlaying, playerName, isDarkMode
-      }));
-    }
-  }, [dice, placedTiles, timeLeft, isPlaying, playerName, isDarkMode]);
-
-  useEffect(() => {
-    fetchLeaderboard();
-  }, []);
-
-  useEffect(() => {
-    if (isPlaying && timeLeft > 0) {
-      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-      return () => clearTimeout(timer);
-    } else if (isPlaying && timeLeft === 0) {
-      submitBoard();
-    }
-  }, [isPlaying, timeLeft]);
-
-  const fetchLeaderboard = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/leaderboard/`);
-      setLeaderboard(res.data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const startRound = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/game/roll/`);
-      const trayDice = res.data.dice.map((letter: string) => ({
-        id: `dice-${crypto.randomUUID()}`,
-        letter
-      }));
-      setDice(trayDice);
-      setPlacedTiles([]);
-      setTimeLeft(180);
-      setIsPlaying(true);
-      setFeedback(null);
-    } catch (e) {
-      console.error(e);
-      let errorMessage = "Failed to start round."
-      if (axios.isAxiosError(e) && !e.response) {
-        errorMessage = "Server is waking up. Please wait 30 seconds and try again!"
-      }
-      setFeedback({valid: false, message: errorMessage})
-    }
-  };
-
-  const moveTile = (tileId: string, targetId: string) => {
-    let sourceTile: TrayItem | BoardItem | undefined = dice.find(d => d.id === tileId);
-    let fromTray = true;
-    if (!sourceTile) {
-      sourceTile = placedTiles.find(t => t.id === tileId);
-      fromTray = false;
-    }
-    if (!sourceTile) return;
-
-    if (targetId === 'tray') {
-      if (!fromTray) {
-        const boardItem = sourceTile as BoardItem;
-        setPlacedTiles(prev => prev.filter(t => t.id !== tileId));
-        setDice(prev => [...prev, { id: tileId, letter: boardItem.is_wildcard ? '_' : boardItem.letter }]);
-      }
-    } else if (targetId.startsWith('grid-')) {
-      const [, rStr, cStr] = targetId.split('-');
-      const r = parseInt(rStr);
-      const c = parseInt(cStr);
-      
-      const occupied = placedTiles.find(t => t.row === r && t.col === c);
-      if (occupied && occupied.id !== tileId) return;
-
-      let letter = sourceTile.letter;
-      let is_wildcard = (sourceTile as BoardItem).is_wildcard || false;
-      
-      if (fromTray && letter === '_') {
-          const input = prompt("Enter a letter (A-Z) for this Joker:");
-          if (!input || !/^[a-zA-Z]$/.test(input)) {
-             alert("You must enter a single letter from A to Z.");
-             return;
-          }
-          letter = input.toUpperCase();
-          is_wildcard = true;
-      }
-      
-      if (fromTray) {
-        setDice(prev => prev.filter(d => d.id !== tileId));
-        setPlacedTiles(prev => [...prev, { id: tileId, row: r, col: c, letter, is_wildcard }]);
-      } else {
-        setPlacedTiles(prev => prev.map(t => t.id === tileId ? { ...t, row: r, col: c } : t));
-      }
-    }
-    setSelectedTileId(null);
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || !isPlaying) return;
-    moveTile(active.id as string, over.id as string);
-  };
-
-  const handleTileClick = (id: string) => {
-    if (!isPlaying) return;
-    setSelectedTileId(id === selectedTileId ? null : id);
-  };
-
-  const handleCellClick = (id: string) => {
-    if (!isPlaying || !selectedTileId) return;
-    moveTile(selectedTileId, id);
-  };
-
-  const submitBoard = async () => {
-    if (placedTiles.length === 0) return;
-    setIsPlaying(false);
-    
-    const fullRoll = [...dice.map(d => d.letter)];
-    for (const t of placedTiles) {
-      fullRoll.push(t.is_wildcard ? '_' : t.letter);
-    }
-    
-    try {
-      const res = await axios.post(`${API_URL}/game/submit/`, {
-        player_name: playerName,
-        dice: fullRoll,
-        board: placedTiles
-      });
-      
-      if (res.data.valid) {
-        setFeedback({
-          valid: true, 
-          message: `Valid!`,
-          score: res.data.score,
-          breakdown: res.data.breakdown
-        });
-        fetchLeaderboard();
-        localStorage.removeItem('scribbage_state');
-      } else {
-        setFeedback({valid: false, message: res.data.error});
-      }
-    } catch (e) {
-      console.error(e);
-      let errorMessage = "Submission failed or network error.";
-      
-      if (axios.isAxiosError(e)) {
-        if (e.response) {
-            // DRF Validation errors (400 Bad Request) usually come back as JSON objects mapping fields to arrays of errors
-            if (e.response.data && typeof e.response.data === 'object') {
-                 const firstKey = Object.keys(e.response.data)[0];
-                 const firstError = e.response.data[firstKey];
-                 errorMessage = `Error: ${Array.isArray(firstError) ? firstError[0] : firstError}`;
-            } else {
-                 errorMessage = `Server Error: ${e.response.statusText}`;
-            }
-        } else if (e.request) {
-            errorMessage = "Server took too long to respond (it might be waking up). Please try again!";
+  const { sendJsonMessage } = useWebSocket(roomCode ? `${WS_URL}${roomCode}/` : null, {
+    onOpen: () => console.log('WebSocket connection opened.'),
+    onMessage: (event) => {
+      const data = JSON.parse(event.data)
+      if (data.action === 'GAME_START') {
+        setBoard(data.board)
+        setTimeLeft(180)
+        setView('PLAYING')
+        setMyScore(0)
+        setMyWords([])
+      } else if (data.action === 'TIMER_TICK') {
+        setTimeLeft(data.time_left)
+      } else if (data.action === 'SCORE_UPDATE') {
+        setPlayers(prev => ({
+          ...prev,
+          [data.player_name]: data.total_score
+        }))
+        if (data.player_name === name) {
+          setMyScore(data.total_score)
+          setMyWords(prev => [{word: data.word, points: data.points}, ...prev])
         }
+      } else if (data.action === 'GAME_OVER') {
+        setView('FINISHED')
       }
-      setFeedback({valid: false, message: errorMessage});
     }
-  };
+  })
 
-  const recallAllTiles = () => {
-    if (!isPlaying || placedTiles.length === 0) return;
-    
-    const returnedTiles = placedTiles.map(t => ({
-      id: t.id,
-      letter: t.is_wildcard ? '_' : t.letter
-    }));
-    
-    setDice(prev => [...prev, ...returnedTiles]);
-    setPlacedTiles([]);
-  };
+  const createRoom = async () => {
+    try {
+      const res = await axios.post(`${API_URL}room/create/`)
+      setRoomCode(res.data.code)
+      setIsGm(true)
+      joinRoomSubmit(res.data.code, name)
+    } catch (e) { console.error(e) }
+  }
 
-  const TrayZone = () => {
-    const { setNodeRef } = useDroppable({ id: 'tray' });
+  const joinRoomSubmit = async (code: string, pName: string) => {
+    try {
+      const res = await axios.post(`${API_URL}room/join/`, { code, name: pName })
+      setRoomCode(res.data.room)
+      setIsGm(res.data.is_gm)
+      setView('WAITING')
+      setPlayers(prev => ({ ...prev, [pName]: 0 }))
+    } catch (e) { alert("Room not found") }
+  }
+
+  const startGame = () => {
+    sendJsonMessage({ action: 'START_GAME' })
+  }
+
+  const submitWord = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentWord.trim()) return
+    sendJsonMessage({
+      action: 'SUBMIT_WORD',
+      player_name: name,
+      word: currentWord.trim()
+    })
+    setCurrentWord('')
+  }
+
+  if (view === 'LOBBY') {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-lg p-2 flex flex-col h-[160px] sm:h-[180px] transition-colors border border-gray-200 dark:border-slate-700 shadow-sm">
-        <div className="flex justify-between items-center mb-1 px-1 shrink-0">
-          <span className="text-[10px] sm:text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest">Tray</span>
-          <span className="text-[10px] sm:text-xs font-bold text-gray-400 dark:text-slate-500">{dice.length}/13</span>
-        </div>
-        <div ref={setNodeRef} onClick={() => selectedTileId && moveTile(selectedTileId, 'tray')} className="grid grid-cols-7 gap-1 flex-grow items-start content-start cursor-pointer">
-          {dice.map((tile) => (
-            <div key={tile.id} className="aspect-square w-full max-w-[45px] mx-auto p-[1px]">
-              <DraggableTile id={tile.id} letter={tile.letter} isSelected={selectedTileId === tile.id} onClick={(e) => { e.stopPropagation(); handleTileClick(tile.id); }} />
-            </div>
-          ))}
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+        <h1 className="text-4xl font-bold mb-8">Tournament Scrib</h1>
+        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+          <input 
+            className="w-full border p-2 mb-4 rounded" 
+            placeholder="Your Name" 
+            value={name} onChange={e => setName(e.target.value)} 
+          />
+          <input 
+            className="w-full border p-2 mb-4 rounded uppercase" 
+            placeholder="Room Code (to join)" 
+            value={roomCode} onChange={e => setRoomCode(e.target.value.toUpperCase())} 
+          />
+          <div className="flex space-x-4">
+            <button 
+              className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
+              onClick={() => joinRoomSubmit(roomCode, name)}
+              disabled={!name || !roomCode}
+            >Join Room</button>
+            <button 
+              className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 disabled:opacity-50"
+              onClick={createRoom}
+              disabled={!name}
+            >Create Room</button>
+          </div>
         </div>
       </div>
-    );
-  };
+    )
+  }
+
+  if (view === 'WAITING') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+        <h2 className="text-2xl font-bold mb-4">Room: {roomCode}</h2>
+        <p className="mb-8">Waiting for Game Master to start...</p>
+        {isGm && (
+          <button 
+            className="bg-green-500 text-white px-8 py-3 rounded text-xl font-bold shadow hover:bg-green-600"
+            onClick={startGame}
+          >Start Tournament Round!</button>
+        )}
+      </div>
+    )
+  }
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd} accessibility={{ announcements }}>
-      <div className={isDarkMode ? 'dark' : ''}>
-        <div className="h-screen w-full flex flex-col bg-gray-50 dark:bg-slate-900 overflow-hidden font-sans text-gray-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex flex-col items-center min-h-screen bg-gray-100 p-4">
+      <div className="w-full max-w-4xl flex flex-col md:flex-row gap-8">
         
-        {/* HEADER */}
-        <header className="bg-white dark:bg-slate-950 border-b border-gray-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between shrink-0 transition-colors">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight leading-none">SCRIBBAGE</h1>
-            <div className="text-[13px] text-gray-400 dark:text-slate-500 font-bold uppercase mt-0.5 tracking-widest">ni Roosc</div>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className={`text-xl sm:text-2xl font-mono font-black ${timeLeft < 30 && isPlaying ? 'text-red-500' : 'text-gray-800 dark:text-slate-200'}`}>
+        {/* Left Column: Board & Input */}
+        <div className="flex-1">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-3xl font-bold">Room: {roomCode}</h2>
+            <div className={`text-4xl font-mono font-bold ${timeLeft <= 10 ? 'text-red-500' : 'text-blue-600'}`}>
               {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
             </div>
-            <button 
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="text-gray-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors"
-              aria-label="Toggle Dark Mode"
-            >
-              {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <button 
-              onClick={() => setShowLeaderboard(true)}
-              className="text-gray-500 hover:text-indigo-600 dark:text-slate-400 dark:hover:text-indigo-400 transition-colors"
-            >
-              <Trophy size={20} />
-            </button>
           </div>
-        </header>
-
-        {/* MAIN GAME AREA */}
-        <main className="flex-1 flex flex-col items-center justify-start p-2 gap-2 overflow-y-auto w-full max-w-lg mx-auto">
           
-          {/* Controls */}
-          <div className="w-full flex gap-2 shrink-0">
-            <input 
-              type="text" 
-              value={playerName}
-              onChange={e => setPlayerName(e.target.value)}
-              className="flex-1 min-w-0 px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg font-medium text-sm focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors"
-              placeholder="Name"
-            />
-            <button 
-              onClick={startRound}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap focus:outline-none transition-colors"
-            >
-              {isPlaying ? "Restart" : "Start"}
-            </button>
-            <button 
-              onClick={recallAllTiles}
-              disabled={!isPlaying || placedTiles.length === 0}
-              className="bg-gray-500 hover:bg-gray-600 disabled:bg-gray-200 dark:disabled:bg-slate-800 disabled:text-gray-400 dark:disabled:text-slate-600 text-white px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap focus:outline-none transition-colors"
-            >
-              Recall All
-            </button>
-            <button 
-              onClick={submitBoard}
-              disabled={!isPlaying || placedTiles.length === 0}
-              className="bg-green-600 hover:bg-green-700 disabled:bg-gray-200 dark:disabled:bg-slate-800 disabled:text-gray-400 dark:disabled:text-slate-600 text-white px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap focus:outline-none transition-colors"
-            >
-              Submit
-            </button>
+          <div className="grid grid-cols-4 gap-2 bg-gray-300 p-2 rounded-lg aspect-square mb-6">
+            {board.map((row, r) => 
+              row.map((letter, c) => (
+                <div key={`${r}-${c}`} className="bg-white rounded-md flex items-center justify-center text-4xl font-bold shadow-sm select-none">
+                  {letter === 'Q' ? 'Qu' : letter}
+                </div>
+              ))
+            )}
           </div>
 
-          {/* Feedback */}
-          {feedback && (
-            <div className={`w-full p-3 rounded-lg border text-sm font-medium transition-colors ${feedback.valid ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300'} shrink-0`}>
-              <div className="flex items-center">
-                {feedback.valid && <span className="mr-2 font-bold text-base">Score: {feedback.score}.</span>}
-                {feedback.message}
-              </div>
-              {feedback.valid && feedback.breakdown && (
-                <ul className="mt-2 space-y-1 bg-white/50 dark:bg-black/20 p-2 rounded font-mono text-xs text-gray-700 dark:text-gray-300">
-                  {feedback.breakdown.map((item, idx) => (
-                    <li key={idx} className="flex justify-between border-b border-green-100 dark:border-green-800/50 last:border-0 pb-0.5 last:pb-0">
-                      <span>{item.word}</span>
-                      <span>{item.score} pts</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          {view === 'PLAYING' && (
+            <form onSubmit={submitWord} className="flex gap-2">
+              <input
+                autoFocus
+                className="flex-1 border-2 border-gray-300 p-4 rounded text-xl uppercase"
+                placeholder="Type word & press Enter"
+                value={currentWord}
+                onChange={e => setCurrentWord(e.target.value.toUpperCase())}
+              />
+              <button type="submit" className="bg-blue-500 text-white px-6 rounded font-bold text-lg hover:bg-blue-600">
+                Submit
+              </button>
+            </form>
           )}
 
-          {/* GRID */}
-          <div className="w-full aspect-square bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 shrink-0 mt-auto mb-auto overflow-hidden">
-            <div className="w-full h-full grid grid-cols-15 border-l border-t border-gray-200 dark:border-slate-700">
-              {Array.from({length: 15}).map((_, r) => (
-                Array.from({length: 15}).map((_, c) => (
-                  <DroppableGridCell 
-                    key={`${r}-${c}`} 
-                    id={`grid-${r}-${c}`} 
-                    tile={placedTiles.find(t => t.row === r && t.col === c)} 
-                    isSelectedTile={placedTiles.find(t => t.row === r && t.col === c)?.id === selectedTileId}
-                    onTileClick={handleTileClick}
-                    onCellClick={handleCellClick}
-                  />
-                ))
-              ))}
+          {view === 'FINISHED' && (
+            <div className="bg-red-100 text-red-800 p-4 rounded text-xl font-bold text-center border border-red-200">
+              Time is up! Round Finished.
             </div>
-          </div>
-
-          {/* TRAY */}
-          <div className="w-full shrink-0">
-            <TrayZone />
-          </div>
-          
-        </main>
-
-        {/* FOOTER: SOCIAL LINKS */}
-        <footer className="bg-white dark:bg-slate-950 border-t border-gray-200 dark:border-slate-800 p-3 flex flex-col justify-center items-center gap-1 shrink-0 z-10 text-sm font-bold transition-colors">
-          <div className="text-xs text-gray-400 dark:text-slate-500 font-medium tracking-widest uppercase">Developed by Roosc</div>
-          <div className="flex gap-6 mt-1">
-            <a href="https://github.com/ur1el0" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-gray-900 dark:hover:text-slate-100 transition-colors" title="GitHub">GitHub</a>
-            <a href="https://www.linkedin.com/in/roosc-za%C3%B1o-08568a357/" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="LinkedIn">LinkedIn</a>
-            <a href="https://facebook.com/dumayac.nhel" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="Facebook">Facebook</a>
-            <a href="https://instagram.com/fuschiapenk" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-pink-600 dark:hover:text-pink-400 transition-colors" title="Instagram">Instagram</a>
-          </div>
-        </footer>
+          )}
         </div>
 
-        {/* LEADERBOARD MODAL */}
-        {showLeaderboard && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[80vh]">
-              <div className="bg-indigo-600 text-white p-4 flex justify-between items-center shrink-0">
-                <h2 className="text-lg font-black tracking-wide flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-amber-300" /> Leaderboard
-                </h2>
-                <button onClick={() => setShowLeaderboard(false)} className="text-white hover:text-gray-200">
-                  <X size={20} />
-                </button>
+        {/* Right Column: Leaderboard & Words */}
+        <div className="w-full md:w-80 flex flex-col gap-4">
+          <div className="bg-white p-4 rounded shadow">
+            <h3 className="text-xl font-bold mb-4 border-b pb-2">Leaderboard</h3>
+            {Object.entries(players).sort((a,b) => b[1] - a[1]).map(([p, score]) => (
+              <div key={p} className={`flex justify-between py-1 ${p === name ? 'font-bold text-blue-600' : ''}`}>
+                <span>{p}</span>
+                <span>{score}</span>
               </div>
-              <div className="p-4 overflow-y-auto">
-                {leaderboard.length === 0 ? (
-                  <div className="text-gray-500 text-center py-8">No scores yet.</div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {leaderboard.map((score, i) => (
-                      <div key={score.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border">
-                        <div className="flex items-center gap-3">
-                          <div className={`font-black w-6 text-center ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-300'}`}>
-                            #{i + 1}
-                          </div>
-                          <div className="font-bold text-gray-700 text-sm sm:text-base">{score.player_name}</div>
-                        </div>
-                        <div className="font-black text-indigo-600">{score.score}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+            ))}
+          </div>
+
+          <div className="bg-white p-4 rounded shadow flex-1">
+            <h3 className="text-xl font-bold mb-4 border-b pb-2">My Words ({myScore} pts)</h3>
+            <div className="overflow-y-auto max-h-96">
+              {myWords.map((w, i) => (
+                <div key={i} className="flex justify-between py-1 text-sm border-b border-gray-100 last:border-0">
+                  <span className="uppercase">{w.word}</span>
+                  <span className="text-green-600 font-bold">+{w.points}</span>
+                </div>
+              ))}
+              {myWords.length === 0 && <p className="text-gray-400 italic text-sm">No words found yet.</p>}
             </div>
           </div>
-        )}
-
+        </div>
       </div>
-    </DndContext>
-  );
+    </div>
+  )
 }
+
+export default App
