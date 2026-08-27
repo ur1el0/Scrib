@@ -4,8 +4,8 @@ import axios from 'axios'
 import { Sun, Moon, Trophy, X } from 'lucide-react'
 import './App.css'
 
-const WS_URL = 'ws://127.0.0.1:8001/ws/game/'
-const API_URL = 'http://127.0.0.1:8001/api/'
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001/api/'
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8001/ws/game/'
 
 function App() {
   const [view, setView] = useState<'LOBBY' | 'WAITING' | 'PLAYING' | 'FINISHED'>('LOBBY')
