@@ -84,12 +84,22 @@ class GameConsumer(AsyncWebsocketConsumer):
                 )
         
         await self.set_room_finished(self.room_code)
+        missed_words = await self.get_missed_words(self.room_code)
         await self.channel_layer.group_send(
             self.room_group_name,
             {
-                'type': 'game_over'
+                'type': 'game_over',
+                'missed_words': missed_words
             }
         )
+
+    @database_sync_to_async
+    def get_missed_words(self, room_code):
+        from .logic import solve_board
+        room = Room.objects.get(code=room_code)
+        all_possible = solve_board(room.grid_state)
+        found = set(FoundWord.objects.filter(player__room=room).values_list('word', flat=True))
+        return [w for w in all_possible if w['word'] not in found]
 
     # Handlers
     async def game_start(self, event):
@@ -115,7 +125,8 @@ class GameConsumer(AsyncWebsocketConsumer):
         
     async def game_over(self, event):
         await self.send(text_data=json.dumps({
-            'action': 'GAME_OVER'
+            'action': 'GAME_OVER',
+            'missed_words': event.get('missed_words', [])
         }))
 
     # DB Helpers

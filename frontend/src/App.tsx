@@ -32,8 +32,8 @@ function App() {
   const [currentWord, setCurrentWord] = useState('')
   const [myScore, setMyScore] = useState(0)
   const [myWords, setMyWords] = useState<{word: string, points: number}[]>([])
+  const [missedWords, setMissedWords] = useState<{word: string, points: number}[]>([])
   const [errorMsg, setErrorMsg] = useState('')
-  
   // Players
   const [players, setPlayers] = useState<Record<string, number>>({})
 
@@ -62,6 +62,9 @@ function App() {
         setErrorMsg(data.error)
         setTimeout(() => setErrorMsg(''), 2500)
       } else if (data.action === 'GAME_OVER') {
+        if (data.missed_words) {
+          setMissedWords(data.missed_words)
+        }
         setView('FINISHED')
       }
     }
@@ -251,6 +254,20 @@ function App() {
                       {myWords.length === 0 && <p className="text-gray-400 dark:text-slate-500 italic text-sm">No words found yet.</p>}
                     </div>
                   </div>
+
+                  {view === 'FINISHED' && missedWords.length > 0 && (
+                    <div className="bg-white dark:bg-slate-800 p-4 rounded-lg shadow-sm border border-gray-100 dark:border-slate-700 flex-1 transition-colors">
+                      <h3 className="text-lg font-black mb-3 border-b border-gray-100 dark:border-slate-700 pb-2">Missed Words ({missedWords.length})</h3>
+                      <div className="overflow-y-auto max-h-64 pr-2">
+                        {missedWords.map((w, i) => (
+                          <div key={i} className="flex justify-between py-1 text-sm border-b border-gray-50 dark:border-slate-700/50 last:border-0">
+                            <span className="uppercase font-bold text-gray-500 dark:text-slate-400">{w.word}</span>
+                            <span className="text-gray-400 dark:text-slate-500 font-bold">{w.points}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
           )}
