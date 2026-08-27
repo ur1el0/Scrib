@@ -30,6 +30,7 @@ function App() {
   const [currentWord, setCurrentWord] = useState('')
   const [myScore, setMyScore] = useState(0)
   const [myWords, setMyWords] = useState<{word: string, points: number}[]>([])
+  const [errorMsg, setErrorMsg] = useState('')
   
   // Players
   const [players, setPlayers] = useState<Record<string, number>>({})
@@ -55,6 +56,9 @@ function App() {
           setMyScore(data.total_score)
           setMyWords(prev => [{word: data.word, points: data.points}, ...prev])
         }
+      } else if (data.action === 'WORD_ERROR') {
+        setErrorMsg(data.error)
+        setTimeout(() => setErrorMsg(''), 2500)
       } else if (data.action === 'GAME_OVER') {
         setView('FINISHED')
       }
@@ -185,6 +189,12 @@ function App() {
                       ))
                     )}
                   </div>
+
+                  {errorMsg && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded shadow-lg font-bold z-50">
+                      {errorMsg}
+                    </div>
+                  )}
 
                   {view === 'PLAYING' && (
                     <form onSubmit={submitWord} className="flex gap-2">
