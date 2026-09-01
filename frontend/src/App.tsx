@@ -15,14 +15,22 @@ function App() {
   const [name, setName] = useState('')
   const [isGm, setIsGm] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
-  const [isDarkMode, setIsDarkMode] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('theme') === 'dark' || 
+        (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    return false;
+  })
   
   // Apply dark mode class
   useEffect(() => {
     if (isDarkMode) {
       document.documentElement.classList.add('dark')
+      localStorage.setItem('theme', 'dark')
     } else {
       document.documentElement.classList.remove('dark')
+      localStorage.setItem('theme', 'light')
     }
   }, [isDarkMode])
 
@@ -214,8 +222,22 @@ function App() {
                   )}
 
                   {view === 'FINISHED' && (
-                    <div className="bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 p-4 rounded-lg text-xl font-bold text-center border border-red-200 dark:border-red-800 transition-colors">
-                      Time is up! Round Finished.
+                    <div className="flex flex-col gap-4">
+                      <div className="bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 p-4 rounded-lg text-xl font-bold text-center border border-red-200 dark:border-red-800 transition-colors">
+                        Time is up! Round Finished.
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setView('LOBBY')
+                          setRoomCode('')
+                          setMyWords([])
+                          setMyScore(0)
+                          setPlayers({})
+                        }}
+                        className="w-full bg-indigo-600 text-white p-4 rounded-lg font-bold text-lg hover:bg-indigo-700 transition-colors shadow flex justify-center items-center gap-2"
+                      >
+                        Back to Main Menu
+                      </button>
                     </div>
                   )}
                 </div>
