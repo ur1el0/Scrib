@@ -193,6 +193,21 @@ function App() {
                 {/* Left Column: Board & Input */}
                 <div className="flex-1 max-w-lg mx-auto w-full">
                   
+                  {view === 'PLAYING' && (
+                    <form onSubmit={submitWord} className="flex gap-2 mb-4">
+                      <input
+                        autoFocus
+                        className="flex-1 bg-white dark:bg-slate-800 border-2 border-indigo-200 dark:border-slate-700 p-3 md:p-4 rounded-lg text-base md:text-xl uppercase font-bold focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors"
+                        placeholder="Type word..."
+                        value={currentWord}
+                        onChange={e => setCurrentWord(e.target.value.toUpperCase())}
+                      />
+                      <button type="submit" className="bg-indigo-600 text-white px-4 md:px-6 rounded-lg font-bold text-base md:text-lg hover:bg-indigo-700 transition-colors shadow">
+                        Submit
+                      </button>
+                    </form>
+                  )}
+
                   <div className="grid grid-cols-4 gap-2 bg-indigo-100 dark:bg-slate-800 p-3 rounded-xl aspect-square mb-6 shadow-sm border border-indigo-200 dark:border-slate-700">
                     {board.map((row, r) => 
                       row.map((letter, c) => (
@@ -207,21 +222,6 @@ function App() {
                     <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded shadow-lg font-bold z-50">
                       {errorMsg}
                     </div>
-                  )}
-
-                  {view === 'PLAYING' && (
-                    <form onSubmit={submitWord} className="flex gap-2">
-                      <input
-                        autoFocus
-                        className="flex-1 bg-white dark:bg-slate-800 border-2 border-indigo-200 dark:border-slate-700 p-4 rounded-lg text-xl uppercase font-bold focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 transition-colors"
-                        placeholder="Type word & press Enter"
-                        value={currentWord}
-                        onChange={e => setCurrentWord(e.target.value.toUpperCase())}
-                      />
-                      <button type="submit" className="bg-indigo-600 text-white px-6 rounded-lg font-bold text-lg hover:bg-indigo-700 transition-colors shadow">
-                        Submit
-                      </button>
-                    </form>
                   )}
 
                   {view === 'FINISHED' && (
