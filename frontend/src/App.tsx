@@ -43,7 +43,21 @@ function App() {
   const [missedWords, setMissedWords] = useState<{word: string, points: number}[]>([])
   const [errorMsg, setErrorMsg] = useState('')
   // Players
-  const [players, setPlayers] = useState<Record<string, number>>({})
+  const [players, setPlayers] = useState<{ name: string, score: number }[]>([])
+
+  const updatePlayerScore = (playerName: string, score: number) => {
+    setPlayers(previousPlayers => {
+      const playerIndex = previousPlayers.findIndex(player => player.name === playerName)
+
+      if (playerIndex === -1) {
+        return [...previousPlayers, { name: playerName, score }]
+      }
+
+      const updatedPlayers = [...previousPlayers]
+      updatedPlayers[playerIndex] = { ...updatedPlayers[playerIndex], score }
+      return updatedPlayers
+    })
+  }
 
   const { sendJsonMessage } = useWebSocket(view !== 'LOBBY' && roomCode ? `${WS_URL}${roomCode}/` : null, {
     onOpen: () => console.log('WebSocket connection opened.'),
@@ -58,10 +72,7 @@ function App() {
       } else if (data.action === 'TIMER_TICK') {
         setTimeLeft(data.time_left)
       } else if (data.action === 'SCORE_UPDATE') {
-        setPlayers(prev => ({
-          ...prev,
-          [data.player_name]: data.total_score
-        }))
+        updatePlayerScore(data.player_name, data.total_score)
         if (data.player_name === name) {
           setMyScore(data.total_score)
           setMyWords(prev => [{word: data.word, points: data.points}, ...prev])
@@ -93,7 +104,7 @@ function App() {
       setRoomCode(res.data.room)
       setIsGm(res.data.is_gm)
       setView('WAITING')
-      setPlayers(prev => ({ ...prev, [pName]: 0 }))
+      updatePlayerScore(pName, 0)
     } catch (e) { alert("Room not found") }
   }
 
@@ -218,6 +229,10 @@ function App() {
                     )}
                   </div>
 
+                  <p className="mb-4 text-sm text-gray-500 dark:text-slate-400">
+                    Make any dictionary word from the board letters, in any order. Use each square once. Score one point per letter.
+                  </p>
+
                   {errorMsg && (
                     <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded shadow-lg font-bold z-50">
                       {errorMsg}
@@ -252,13 +267,13 @@ function App() {
                       <Trophy className="text-amber-500 w-5 h-5"/> Live Leaderboard
                     </h3>
                     <div className="flex flex-col gap-1">
-                      {Object.entries(players).sort((a,b) => b[1] - a[1]).map(([p, score], idx) => (
-                        <div key={p} className={`flex justify-between p-2 rounded-md ${p === name ? 'bg-indigo-50 dark:bg-indigo-900/20 font-bold text-indigo-700 dark:text-indigo-300' : 'text-gray-600 dark:text-slate-300'}`}>
+                      {players.slice().sort((a, b) => b.score - a.score).map((player, idx) => (
+                        <div key={player.name} className={`flex justify-between p-2 rounded-md ${player.name === name ? 'bg-indigo-50 dark:bg-indigo-900/20 font-bold text-indigo-700 dark:text-indigo-300' : 'text-gray-600 dark:text-slate-300'}`}>
                           <div className="flex items-center gap-2">
                             <span className="text-xs font-black w-4 opacity-50">#{idx+1}</span>
-                            <span>{p}</span>
+                            <span>{player.name}</span>
                           </div>
-                          <span>{score}</span>
+                          <span>{player.score}</span>
                         </div>
                       ))}
                     </div>
@@ -320,19 +335,19 @@ function App() {
                  </button>
                </div>
                <div className="p-4 overflow-y-auto">
-                 {Object.keys(players).length === 0 ? (
+                 {players.length === 0 ? (
                    <div className="text-gray-500 dark:text-slate-400 text-center py-8 font-medium">No scores yet.</div>
                  ) : (
                    <div className="flex flex-col gap-2">
-                     {Object.entries(players).sort((a,b) => b[1] - a[1]).map(([p, score], i) => (
-                       <div key={p} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 transition-colors">
+                     {players.slice().sort((a, b) => b.score - a.score).map((player, i) => (
+                       <div key={player.name} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 transition-colors">
                          <div className="flex items-center gap-3">
                            <div className={`font-black w-6 text-center ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-700' : 'text-gray-300 dark:text-slate-600'}`}>
                              #{i + 1}
                            </div>
-                           <div className="font-bold text-gray-700 dark:text-slate-200 text-sm sm:text-base">{p}</div>
+                           <div className="font-bold text-gray-700 dark:text-slate-200 text-sm sm:text-base">{player.name}</div>
                          </div>
-                         <div className="font-black text-indigo-600 dark:text-indigo-400">{score} pts</div>
+                         <div className="font-black text-indigo-600 dark:text-indigo-400">{player.score} pts</div>
                        </div>
                      ))}
                    </div>

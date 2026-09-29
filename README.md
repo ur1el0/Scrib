@@ -1,84 +1,71 @@
-# Scrib (MSEUF English Festival Practice Tool)
+# Scrib
 
-Scrib is a real-time multiplayer word puzzle game designed specifically as a practice tool for the **Manuel S. Enverga University Foundation (MSEUF) English Festival**. 
+Scrib is a real-time multiplayer word-building game. Players join a room, share a 4×4 letter board, and make words before the three-minute timer ends.
 
-While originally inspired by classic crossword dice games, this specific branch/project has been completely architected to simulate the competitive, high-pressure tournament environment of the English Festival (which utilizes standard Boggle mechanics).
+## How to play
 
-## MSEUF English Festival Rules
+1. Enter your name and create a room, or join with a room code.
+2. The room host starts the round. Everyone receives the same board.
+3. Submit words made from the board tiles.
 
-### Eligibility & Screening
-- The competition is open to all bona fide students of Manuel S. Enverga University Foundation enrolled in specified Languages and Humanities courses under the College of Arts and Sciences.
-- **Tournament Format:** Four (4) participants play against each other on a single shared board. The winner of the board advances to the next level.
+A word must have at least three letters, appear in the bundled TWL06 word list, and use only tiles on the board. Tiles can be used in any order and each tile can be used once. The Q tile is displayed as Qu and supplies both letters together.
 
-### Gameplay Mechanics
-1. **The Board:** 16 randomized letter cubes are arranged in a 4x4 grid.
-2. **The Timer:** Players have exactly **3 minutes** to find as many words as possible.
-3. **Forming Words:**
-   - Words are formed by tracing a contiguous path through adjacent cubes (horizontally, vertically, or diagonally).
-   - You cannot skip or jump across the board.
-   - You cannot use the *exact same* letter block more than once in a single word.
-4. **Scoring Rubric:** Score is determined purely by word length, not letter rarity.
-   - **3 or 4 letters:** 1 point
-   - **5 letters:** 2 points
-   - **6 letters:** 3 points
-   - **7 letters:** 5 points
-   - **8 or more letters:** 11 points
+Each letter in a valid word is worth one point. For example, CAT is worth 3 points. A player cannot score the same word twice. At the end of the round, the game shows words that could be made but were not submitted.
 
-## Features
-- **Real-Time Multiplayer:** Synchronized game starts, live countdown timers, and instant score broadcasting powered by Django Channels (WebSockets).
-- **Tournament Rooms:** Create custom room codes to play synchronously against up to 3 other friends.
-- **Strict Validation:** The backend uses Depth-First Search (DFS) pathfinding to verify the word exists on the contiguous 4x4 board, cross-referenced against the official tournament dictionary (TWL06).
-- **Responsive UI:** Dark mode support, live interactive leaderboard, and error feedback for invalid traces.
+## How the word check works
 
-## Tech Stack
-### Frontend (Client)
-- React 19, TypeScript, Vite
-- TailwindCSS v4
-- WebSockets (Native Hook)
-- Axios & Lucide React
+The backend copies the board tiles into a list. It reads the submitted word from left to right and looks for a matching unused tile. When it finds one, it removes that tile from the list. If it cannot find a tile for any letter, the word is rejected.
 
-### Backend (API)
-- Python 3.10+
-- Django 5
-- Django Channels (Asynchronous WebSockets)
-- Daphne (ASGI Server)
-- SQLite (Development)
+The backend also checks the word length and looks for the word in the bundled list of more than 170,000 words. Since tiles do not need to touch, there is no path search or recursion.
 
-## Setup Instructions
+At the end of the round, the backend checks each word in the word list against the board tiles to find missed words. This simple full-list scan is easier to follow, but can take longer than a trie-based search.
 
-### 1. Backend Setup
-Navigate to the backend directory, create a virtual environment, and run the ASGI server.
+## How multiplayer works
 
-```bash
+- The API creates rooms and adds players.
+- Each player's browser opens a WebSocket connection for the room.
+- The backend sends the board, timer updates, score updates, and final results to everyone in that room.
+- Django stores rooms, players, and submitted words in SQLite by default.
+- The local Channels layer is in memory. Redis and Celery are not used by the current game flow.
+
+## Technology
+
+- Frontend: React, TypeScript, Vite, Tailwind CSS, Axios
+- Backend: Python, Django REST Framework, Django Channels, WebSockets
+- Database: SQLite by default
+
+## Where to look in the code
+
+- frontend/src/App.tsx — game screens, board, and leaderboard.
+- frontend/src/useWebSocketLite.ts — live room connection.
+- backend/game/consumers.py — room messages, timer, and score broadcasts.
+- backend/game/logic.py — board generation, word checking, and scoring.
+- backend/game/models.py — rooms, players, and submitted words.
+- backend/game/twl06.txt — word list used for validation.
+
+## Run locally
+
+Start the backend in one terminal:
+
+~~~bash
 cd backend
-python -m venv venv
-
-# On macOS/Linux:
-source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
-
-pip install -r requirements.txt
-
-# Run database migrations
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 python manage.py migrate
+python manage.py runserver 127.0.0.1:8001
+~~~
 
-# Start the Daphne ASGI server (runs on port 8001 for WebSockets)
-daphne -p 8001 config.asgi:application
-```
+Start the frontend in another terminal:
 
-### 2. Frontend Setup
-Open a new terminal window, navigate to the frontend directory, and start the Vite development server.
-
-```bash
+~~~bash
 cd frontend
 npm install
+npm run dev -- --host 127.0.0.1
+~~~
 
-# Start the Vite development server
-npm run dev
-```
-
-The frontend will start on http://localhost:5173. 
+Open <http://127.0.0.1:5173/>. The frontend connects to the backend on port 8001 by default.
 
 ## License
+
 This project is licensed under the MIT License.

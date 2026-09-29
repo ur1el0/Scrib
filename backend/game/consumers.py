@@ -98,8 +98,10 @@ class GameConsumer(AsyncWebsocketConsumer):
         from .logic import solve_board
         room = Room.objects.get(code=room_code)
         all_possible = solve_board(room.grid_state)
-        found = set(FoundWord.objects.filter(player__room=room).values_list('word', flat=True))
-        return [w for w in all_possible if w['word'] not in found]
+        found_words = list(FoundWord.objects.filter(
+            player__room=room
+        ).values_list('word', flat=True))
+        return [word for word in all_possible if word['word'] not in found_words]
 
     # Handlers
     async def game_start(self, event):
