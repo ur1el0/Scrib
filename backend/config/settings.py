@@ -22,7 +22,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-cc&g4syn8ng51%8zv$m#d6+f3^w_&+5ql2t*xq_mmz+-q%i(k%'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    if 'RENDER' in os.environ:
+        raise ValueError("DJANGO_SECRET_KEY environment variable must be set in production.")
+    SECRET_KEY = 'django-insecure-dev-only-local-environment-key'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = 'RENDER' not in os.environ
@@ -34,7 +38,16 @@ if RENDER_EXTERNAL_HOSTNAME:
 else:
     ALLOWED_HOSTS.extend(['127.0.0.1', 'localhost'])
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Cross-Origin Resource Sharing (CORS) Configuration
+CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'False').lower() == 'true'
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        'CORS_ALLOWED_ORIGINS',
+        'https://scrib-ni-roosc.vercel.app,http://localhost:5173,http://127.0.0.1:5173'
+    ).split(',')
+    if origin.strip()
+]
 
 
 # Application definition
